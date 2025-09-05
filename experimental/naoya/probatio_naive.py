@@ -3,76 +3,9 @@ import sys
 import os
 import re
 import json
-import requests
-import subprocess
-import tempfile
 import click
-from typing import List
 
-
-class Server:
-    def __init__(self):
-        self.url = "https://31pwr5t6ij.execute-api.eu-west-2.amazonaws.com"
-        self.our_id = "yone.j.synthesis@gmail.com nsRDwhEnX4yrlBibSH7pvw"
-
-    def select(self, problem_name: str):
-        if problem_name == "probatio":
-            self.N = 3
-        else:
-            raise ValueError(f"Unknown problem name: {problem_name}")
-
-        payload = {
-            "id": self.our_id,
-            "problemName": problem_name,
-        }
-        response = requests.post(self.url + "/select", json=payload)
-        data = response.json()
-        assert data["problemName"] == problem_name
-        return data
-
-    def explore(self, plans: List[str]):
-        payload = {
-            "id": self.our_id,
-            "plans": plans,
-        }
-        response = requests.post(self.url + "/explore", json=payload)
-        data = response.json()
-        assert "results" in data
-        assert "queryCount" in data
-        return data
-
-    def guess(self, connections):
-        # [[0 1 2 1], ...]
-        rooms = list(range(self.N))
-        starting_room = 0
-
-        connections_map = []
-        for (from_room, from_door, to_room, to_door) in connections:
-            connections_map.append(
-                {
-                    "from": {
-                        "room": from_room,
-                        "door": from_door,
-                    },
-                    "to": {
-                        "room": to_room,
-                        "door": to_door,
-                    },
-                }
-            )
-
-        payload = {
-            "id": self.our_id,
-            "map": {
-                "rooms": rooms,
-                "startingRoom": starting_room,
-                "connections": connections_map,
-            },
-        }
-        response = requests.post(self.url + "/guess", json=payload)
-        data = response.json()
-        assert "correct" in data
-        return data["correct"]
+from server import Server
 
 
 def solve(problem_name):
@@ -84,8 +17,8 @@ def solve(problem_name):
 
 DOORS = 6
 
-def solve_probatio():
-    server = Server()
+def solve_probatio(mock: bool = False):
+    server = Server(mock=mock)
     server.select(problem_name="probatio")
 
     # explore
@@ -97,8 +30,13 @@ def solve_probatio():
     # passed_count = [[0 for i in range(N)] for j in range(N)]
     doors_from = [[[] for i in range(N)] for j in range(N)]  # [from][to] = [doors on from_side]
 
-    visited[0] = True
-    route_to[0] = ""
+    response = server.explore(["0"])
+    starting_room = response["results"][0][0]
+    print("starting_room:", response, starting_room)
+    ## starting_room = 0  ##
+
+    visited[starting_room] = True
+    route_to[starting_room] = ""
 
     def explore_from_here(here):
         plans = [route_to[here] + str(i) for i in range(DOORS)]  # from 0
@@ -155,14 +93,14 @@ def solve_probatio():
 
     # print("connection:", connections)
 
-    verdict = server.guess(connections)
+    verdict = server.guess(starting_room, connections)
     print("VERDICT:", verdict)
 
 
 @click.command()
-def main():
-    # solve("probatio")
-    solve_probatio()
+@click.option("-m", "--mock", is_flag=True, default=False)
+def main(mock: bool):
+    solve_probatio(mock=mock)
 
 
 if __name__ == '__main__':
