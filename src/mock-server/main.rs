@@ -27,7 +27,15 @@ async fn explore_server(
 
 #[post("/guess")]
 async fn guess_server(req: web::Json<GuessRequest>, server: web::Data<Server>) -> impl Responder {
-    web::Json(server.guess(req.into_inner()))
+    web::Json(server.guess(req.into_inner(), false))
+}
+
+#[post("/guess-keep")]
+async fn guess_keep_server(
+    req: web::Json<GuessRequest>,
+    server: web::Data<Server>,
+) -> impl Responder {
+    web::Json(server.guess(req.into_inner(), true))
 }
 
 #[actix_web::main]
@@ -46,6 +54,7 @@ async fn main() -> std::io::Result<()> {
             .service(select_server)
             .service(explore_server)
             .service(guess_server)
+            .service(guess_keep_server)
     })
     .bind("127.0.0.1:8080")?
     .run()

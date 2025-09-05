@@ -112,10 +112,7 @@ impl Server {
         })
     }
 
-    pub fn guess(&self, req: GuessRequest) -> Result<GuessResponse, String> {
-        let problems = self.problems.read().unwrap();
-        let problem = problems.get(&req.id).ok_or("Problem not found")?;
-
+    fn guess_impl(problem: &Problem, req: GuessRequest) -> Result<GuessResponse, String> {
         let mut positions = Vec::<HashSet<usize>>::new();
         for _ in 0..4 {
             positions.push(HashSet::new());
@@ -163,5 +160,21 @@ impl Server {
         }
 
         Ok(GuessResponse { correct: false })
+    }
+
+    pub fn guess(&self, req: GuessRequest, keep_problem: bool) -> Result<GuessResponse, String> {
+        if !keep_problem {
+            let problem = self
+                .problems
+                .write()
+                .unwrap()
+                .remove(&req.id)
+                .ok_or("Problem not found")?;
+            Self::guess_impl(&problem, req)
+        } else {
+            let problems = self.problems.read().unwrap();
+            let problem = problems.get(&req.id).ok_or("Problem not found")?;
+            Self::guess_impl(problem, req)
+        }
     }
 }
