@@ -1,0 +1,26 @@
+[
+  {
+    "name": "probatio",
+    "size": 3
+  },
+  {
+    "name": "primus",
+    "size": 6
+  },
+  {
+    "name": "secundus",
+    "size": 12
+  },
+  {
+    "name": "tertius",
+    "size": 18
+  },
+  {
+    "name": "quartus",
+    "size": 24
+  },
+  {
+    "name": "quintus",
+    "size": 30
+  }
+]
