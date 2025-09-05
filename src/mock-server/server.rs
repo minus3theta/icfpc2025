@@ -2,6 +2,9 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::RwLock;
 
+use std::fs::File;
+use std::io::BufReader;
+
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +12,14 @@ use log::info;
 
 use crate::problem::Problem;
 
+#[derive(Deserialize)]
+pub struct ProblemDefinition {
+    name: String,
+    size: usize,
+}
+
 pub struct Server {
+    definitions: HashMap<String, ProblemDefinition>,
     problems: RwLock<HashMap<String, Problem>>,
 }
 
@@ -72,13 +82,25 @@ pub struct GuessResponse {
 
 impl Server {
     pub fn new() -> Self {
+        let file = File::open("problems.json").unwrap();
+        let reader = BufReader::new(file);
+        let definitions = serde_json::from_reader::<_, Vec<ProblemDefinition>>(reader).unwrap();
         Self {
+            definitions: definitions
+                .into_iter()
+                .map(|d| (d.name.clone(), d))
+                .collect(),
             problems: RwLock::new(HashMap::new()),
         }
     }
 
     pub fn select(&self, req: SelectRequest) -> Result<SelectResponse, String> {
-        let problem = Problem::new(3);
+        let definition = self
+            .definitions
+            .get(&req.problem_name)
+            .ok_or("Problem definition not found")?;
+
+        let problem = Problem::new(definition.size);
         info!("Problem generated:\n{}", problem.pretty_print());
 
         self.problems
