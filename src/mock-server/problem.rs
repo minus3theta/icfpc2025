@@ -128,6 +128,8 @@ impl Problem {
         let mut result = Vec::new();
         let mut current_room = self.starting_room;
 
+        result.push(current_room);
+
         for c in plan.chars() {
             if !('0'..'6').contains(&c) {
                 return Err(format!("Invalid plan: {}", plan));
