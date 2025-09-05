@@ -1,5 +1,4 @@
 use actix_web::{App, HttpServer, Responder, post, web};
-use env_logger;
 use std::env;
 
 mod problem;

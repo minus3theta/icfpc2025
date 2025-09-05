@@ -168,10 +168,10 @@ impl Server {
             }
 
             let mut print_connections = format!("Starting room: {}", starting_room);
-            for i in 0..connections.len() {
+            for (i, connection) in connections.iter().enumerate() {
                 print_connections += &format!("\n{}:", i);
-                for j in 0..connections[i].len() {
-                    print_connections += &format!(" {}", connections[i][j]);
+                for c in connection.iter() {
+                    print_connections += &format!(" {}", c);
                 }
             }
             info!("Attempting to guess:\n{}", print_connections);

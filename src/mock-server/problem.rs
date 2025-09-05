@@ -154,6 +154,6 @@ impl Problem {
                 result += &format!(" {}", self.connections[i][j]);
             }
         }
-        return result;
+        result
     }
 }
