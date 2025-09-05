@@ -148,10 +148,10 @@ impl Problem {
 
     pub fn pretty_print(&self) -> String {
         let mut result = format!("Starting room: {}", self.starting_room);
-        for i in 0..self.connections.len() {
+        for (i, connection) in self.connections.iter().enumerate() {
             result += &format!("\n{}:", i);
-            for j in 0..self.connections[i].len() {
-                result += &format!(" {}", self.connections[i][j]);
+            for c in connection.iter() {
+                result += &format!(" {}", c);
             }
         }
         result
