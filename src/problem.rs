@@ -140,12 +140,57 @@ impl Problem {
         Ok(result)
     }
 
+    fn guess_visit(
+        &self,
+        connections: &Vec<Vec<usize>>,
+        current_room: usize,
+        guessed_room: usize,
+        mapping: &mut Vec<usize>,
+    ) {
+        if mapping[current_room] != usize::MAX {
+            return;
+        }
+        mapping[current_room] = guessed_room;
+        for i in 0..6 {
+            self.guess_visit(
+                connections,
+                connections[current_room][i],
+                self.connections[guessed_room][i],
+                mapping,
+            );
+        }
+    }
+
     pub fn guess(
         &self,
+        rooms: Vec<i8>,
         starting_room: usize,
         connections: Vec<Vec<usize>>,
     ) -> Result<bool, String> {
-        Ok(self.starting_room == starting_room && self.connections == connections)
+        let mut mapping = vec![usize::MAX; rooms.len()];
+
+        self.guess_visit(
+            &connections,
+            starting_room,
+            self.starting_room,
+            &mut mapping,
+        );
+
+        for (i, room) in rooms.iter().enumerate() {
+            if mapping[i] % 4 != *room as usize {
+                return Ok(false);
+            }
+        }
+
+        for (i, connection) in connections.iter().enumerate() {
+            for (j, c) in connection.iter().enumerate() {
+                if mapping[*c] != self.connections[mapping[i]][j] {
+                    return Ok(false);
+                }
+            }
+        }
+
+        Ok(true)
     }
 
     pub fn pretty_print(&self) -> String {
