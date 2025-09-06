@@ -54,12 +54,6 @@ struct SelectResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct SelectResponseWrapper {
-    #[serde(rename = "Ok")]
-    ok: SelectResponse,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 struct ExploreRequest {
     id: String,
     plans: Vec<String>,
@@ -70,12 +64,6 @@ struct ExploreResponse {
     results: Vec<Vec<i8>>,
     #[serde(rename = "queryCount")]
     query_count: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ExploreResponseWrapper {
-    #[serde(rename = "Ok")]
-    ok: ExploreResponse,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -146,8 +134,7 @@ impl RandomWalker {
         let response_text = response.text()?;
         println!("Select response text: {}", response_text);
 
-        let select_resp_wrapper: SelectResponseWrapper = serde_json::from_str(&response_text)?;
-        let select_resp = select_resp_wrapper.ok;
+        let select_resp: SelectResponse = serde_json::from_str(&response_text)?;
         println!("Selected problem: {:?}", select_resp);
 
         Ok(RandomWalker {
@@ -173,8 +160,7 @@ impl RandomWalker {
         let response_text = response.text()?;
         println!("Explore response text: {}", response_text);
 
-        let explore_resp_wrapper: ExploreResponseWrapper = serde_json::from_str(&response_text)?;
-        let explore_resp = explore_resp_wrapper.ok;
+        let explore_resp: ExploreResponse = serde_json::from_str(&response_text)?;
         println!("Explored: {:?}", explore_resp);
 
         // Store the result
