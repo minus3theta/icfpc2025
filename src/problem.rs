@@ -244,6 +244,10 @@ impl Problem {
         starting_room: usize,
         connections: Vec<Vec<usize>>,
     ) -> Result<bool, String> {
+        if rooms.len() != self.connections.len() {
+            return Ok(false);
+        }
+
         let mut mapping = vec![usize::MAX; rooms.len()];
 
         self.guess_visit(
