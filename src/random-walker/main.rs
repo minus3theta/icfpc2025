@@ -1,12 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
 
-use rand::seq::SliceRandom;
-
 #[path = "../request.rs"]
 mod request;
 
+use rand::seq::SliceRandom;
 use request::*;
+
+const QUERY_NUM: usize = 10;
 
 #[derive(Debug)]
 struct UnionFind {
@@ -272,14 +273,16 @@ impl RandomWalker {
 
         // 長さ18*room_countのランダムな探索列を生成
         let mut exploration_plans = Vec::new();
-        for i in 0..6 {
-            for _ in 0..3 * self.room_count {
-                exploration_plans.push(i.to_string());
+        for _ in 0..QUERY_NUM {
+            let mut exploration_plan = Vec::new();
+            for i in 0..6 {
+                for _ in 0..3 * self.room_count {
+                    exploration_plan.push(i.to_string());
+                }
             }
+            exploration_plan.shuffle(&mut rng);
+            exploration_plans.push(exploration_plan.join(""));
         }
-        exploration_plans.shuffle(&mut rng);
-
-        let exploration_plans = vec![exploration_plans.join("")];
 
         println!("Generated exploration plans: {:?}", exploration_plans);
 
@@ -447,9 +450,9 @@ impl RandomWalker {
         }
         println!("\n=== Analyzing Room Types by Label ===");
 
-        let mut uf = UnionFind::new(results[0].len());
+        let mut uf = UnionFind::new(QUERY_NUM * results[0].len());
 
-        let mut to_be_connected = results[0].len() - node_count;
+        let mut to_be_connected = QUERY_NUM * results[0].len() - node_count;
 
         for (k, plan) in plans.iter().enumerate() {
             if results.len() <= k {
@@ -504,65 +507,73 @@ impl RandomWalker {
                 } else if num_rooms[label_i as usize] > 1 {
                     continue;
                 }
-                for j in i + 1..plans[k].len() - 1 {
-                    let label_j = results[k][j];
-                    if label_i != label_j {
-                        continue;
+                for (k2, plan2) in plans.iter().enumerate().skip(k) {
+                    if results.len() <= k2 {
+                        break;
                     }
-                    if num_rooms[label_i as usize] > 1 {
-                        let door_j = plans[k][j..j + 1].parse::<usize>().unwrap();
-                        let label_j2 = results[k][j + 1];
+                    let start_idx = if k == k2 { i + 1 } else { 0 };
+                    for j in start_idx..plan2.len() - 1 {
+                        let label_j = results[k2][j];
+                        if label_i != label_j {
+                            continue;
+                        }
+                        if num_rooms[label_i as usize] > 1 {
+                            let door_j = plan2[j..j + 1].parse::<usize>().unwrap();
+                            let label_j2 = results[k2][j + 1];
 
-                        // 選んだドアとその行先が同じなら同じ部屋とみなす
-                        if door_i != door_j {
-                            continue;
-                        }
-                        if label_i2 != label_j2 {
-                            continue;
-                        }
-                        if check_step >= 2 {
-                            let door_j2 = if j + 1 < plans[k].len() {
-                                plans[k][j + 1..j + 2].parse::<usize>().unwrap()
-                            } else {
-                                !0
-                            };
-                            let label_j3 = if j + 2 < results[k].len() {
-                                results[k][j + 2]
-                            } else {
-                                !0
-                            };
-                            if door_i2 != door_j2 {
+                            // 選んだドアとその行先が同じなら同じ部屋とみなす
+                            if door_i != door_j {
                                 continue;
                             }
-                            if label_i3 != label_j3 {
+                            if label_i2 != label_j2 {
                                 continue;
                             }
-                            if check_step >= 3 {
-                                let door_j3 = if j + 2 < plans[k].len() {
-                                    plans[k][j + 2..j + 3].parse::<usize>().unwrap()
+                            if check_step >= 2 {
+                                let door_j2 = if j + 1 < plan2.len() {
+                                    plans[k2][j + 1..j + 2].parse::<usize>().unwrap()
                                 } else {
                                     !0
                                 };
-                                let label_j4 = if j + 3 < results[k].len() {
-                                    results[k][j + 3]
+                                let label_j3 = if j + 2 < results[k2].len() {
+                                    results[k2][j + 2]
                                 } else {
                                     !0
                                 };
-                                if door_i3 != door_j3 {
+                                if door_i2 != door_j2 {
                                     continue;
                                 }
-                                if label_i4 != label_j4 {
+                                if label_i3 != label_j3 {
                                     continue;
+                                }
+                                if check_step >= 3 {
+                                    let door_j3 = if j + 2 < plan2.len() {
+                                        plan2[j + 2..j + 3].parse::<usize>().unwrap()
+                                    } else {
+                                        !0
+                                    };
+                                    let label_j4 = if j + 3 < results[k2].len() {
+                                        results[k2][j + 3]
+                                    } else {
+                                        !0
+                                    };
+                                    if door_i3 != door_j3 {
+                                        continue;
+                                    }
+                                    if label_i4 != label_j4 {
+                                        continue;
+                                    }
                                 }
                             }
                         }
-                    }
-                    if uf.find(i) == uf.find(j) {
-                        continue;
-                    }
+                        let base_i = k * results[0].len();
+                        let base_j = k2 * results[0].len();
+                        if uf.find(base_i + i) == uf.find(base_j + j) {
+                            continue;
+                        }
 
-                    uf.union(i, j);
-                    to_be_connected -= 1;
+                        uf.union(base_i + i, base_j + j);
+                        to_be_connected -= 1;
+                    }
                 }
             }
         }
@@ -572,27 +583,35 @@ impl RandomWalker {
                 break;
             }
             let mut updated = false;
-            for plan in plans.iter() {
+            for (k, plan) in plans.iter().enumerate() {
+                let base_i = k * results[0].len();
                 for i in 0..plan.len() - 1 {
                     let door_i = plan[i..i + 1].parse::<usize>().unwrap();
-                    let root_i = uf.find(i);
-                    let root_ni = uf.find(i + 1);
-                    for j in i + 1..plan.len() - 1 {
-                        let door_j = plan[j..j + 1].parse::<usize>().unwrap();
-                        let root_j = uf.find(j);
-                        let root_nj = uf.find(j + 1);
-                        if root_i != root_j {
-                            continue;
+                    let root_i = uf.find(base_i + i);
+                    let root_ni = uf.find(base_i + i + 1);
+                    for (k2, plan2) in plans.iter().enumerate().skip(k) {
+                        if results.len() <= k2 {
+                            break;
                         }
-                        if door_i != door_j {
-                            continue;
+                        let start_idx = if k == k2 { i + 1 } else { 0 };
+                        let base_j = k2 * results[0].len();
+                        for j in start_idx..plan2.len() - 1 {
+                            let door_j = plan2[j..j + 1].parse::<usize>().unwrap();
+                            let root_j = uf.find(base_j + j);
+                            let root_nj = uf.find(base_j + j + 1);
+                            if root_i != root_j {
+                                continue;
+                            }
+                            if door_i != door_j {
+                                continue;
+                            }
+                            if root_ni == root_nj {
+                                continue;
+                            }
+                            uf.union(root_ni, root_nj);
+                            updated = true;
+                            to_be_connected -= 1;
                         }
-                        if root_ni == root_nj {
-                            continue;
-                        }
-                        uf.union(root_ni, root_nj);
-                        updated = true;
-                        to_be_connected -= 1;
                     }
                 }
             }
@@ -635,7 +654,7 @@ impl RandomWalker {
         let start_index = root_to_index[&uf.find(0)];
         let mut node_label = vec![0; node_count];
         for (key, value) in root_to_index.iter() {
-            node_label[*value] = results[0][*key];
+            node_label[*value] = results[*key / results[0].len()][*key % results[0].len()];
         }
         let mut graph = vec![vec![!0; 6]; node_count];
         let mut destination_labels = vec![vec![!0; 6]; node_count];
@@ -644,7 +663,8 @@ impl RandomWalker {
             for k in 0..plans.len() {
                 for i in 0..plans[k].len() - 1 {
                     let door_i = plans[k][i..i + 1].parse::<usize>().unwrap();
-                    let root_i = uf.find(i);
+                    let base_i = k * results[0].len();
+                    let root_i = uf.find(base_i + i);
                     if root_to_index.contains_key(&root_i) {
                         destination_labels[root_to_index[&root_i]][door_i] =
                             results[k][i + 1] as usize;
@@ -652,11 +672,12 @@ impl RandomWalker {
                 }
             }
 
-            for plan in plans.iter() {
+            for (k, plan) in plans.iter().enumerate() {
                 for i in 0..plan.len() {
                     let door_i = plan[i..i + 1].parse::<usize>().unwrap();
-                    let root_i = uf.find(i);
-                    let root_ni = uf.find(i + 1);
+                    let base_i = k * results[0].len();
+                    let root_i = uf.find(base_i + i);
+                    let root_ni = uf.find(base_i + i + 1);
                     if root_to_index.contains_key(&root_i) && root_to_index.contains_key(&root_ni) {
                         graph[root_to_index[&root_i]][door_i] = root_to_index[&root_ni];
                     }
@@ -723,15 +744,16 @@ impl RandomWalker {
             let mut updated = false;
 
             // 確定した頂点の確定した行先について、状態が不明なものがあれば設定する
-            for plan in plans.iter() {
+            for (k, plan) in plans.iter().enumerate() {
                 for i in 0..plan.len() {
                     let door_i = plan[i..i + 1].parse::<usize>().unwrap();
-                    let root_i = uf.find(i);
+                    let base_i = k * results[0].len();
+                    let root_i = uf.find(base_i + i);
                     if root_to_index.contains_key(&root_i) {
                         let index_i = root_to_index[&root_i];
                         if graph[index_i][door_i] != !0 {
                             let index_j = graph[index_i][door_i];
-                            let root_j = uf.find(i + 1);
+                            let root_j = uf.find(base_i + i + 1);
                             if !root_to_index.contains_key(&root_j) {
                                 uf.size[roots[index_j]] += uf.size[root_j];
                                 uf.parent[root_j] = roots[index_j];
@@ -746,10 +768,11 @@ impl RandomWalker {
             for (k, plan) in plans.iter().enumerate() {
                 for i in 0..plan.len() {
                     let door_i = plan[i..i + 1].parse::<usize>().unwrap();
-                    let root_i = uf.find(i);
+                    let base_i = k * results[0].len();
+                    let root_i = uf.find(base_i + i);
                     if root_to_index.contains_key(&root_i) {
                         let index_i = root_to_index[&root_i];
-                        let root_ni = uf.find(i + 1);
+                        let root_ni = uf.find(base_i + i + 1);
                         if root_to_index.contains_key(&root_ni) {
                             let index_ni = root_to_index[&root_ni];
                             destination_candidates
@@ -765,11 +788,12 @@ impl RandomWalker {
             for k in 0..plans.len() {
                 for i in 0..plans[k].len() {
                     let door_i = plans[k][i..i + 1].parse::<usize>().unwrap();
-                    let root_i = uf.find(i);
+                    let base_i = k * results[0].len();
+                    let root_i = uf.find(base_i + i);
                     if root_to_index.contains_key(&root_i) {
                         continue;
                     }
-                    let root_ni = uf.find(i + 1);
+                    let root_ni = uf.find(base_i + i + 1);
                     if !root_to_index.contains_key(&root_ni) {
                         continue;
                     }
