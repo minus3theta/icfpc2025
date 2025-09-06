@@ -4,6 +4,11 @@ use std::env;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+#[path = "../request.rs"]
+mod request;
+
+use request::*;
+
 #[derive(Debug)]
 struct UnionFind {
     parent: Vec<usize>,
@@ -40,68 +45,10 @@ impl UnionFind {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct SelectRequest {
-    id: String,
-    #[serde(rename = "problemName")]
-    problem_name: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct SelectResponse {
-    #[serde(rename = "problemName")]
-    problem_name: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ExploreRequest {
-    id: String,
-    plans: Vec<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ExploreResponse {
-    results: Vec<Vec<i8>>,
-    #[serde(rename = "queryCount")]
-    query_count: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GuessRequestMap {
-    rooms: Vec<i8>,
-    #[serde(rename = "startingRoom")]
-    starting_room: usize,
-    connections: Vec<GuessRequestConnection>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GuessRequestConnection {
-    from: GuessRequestRoom,
-    to: GuessRequestRoom,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GuessRequestRoom {
-    room: usize,
-    door: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GuessRequest {
-    id: String,
-    map: GuessRequestMap,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct GuessResponse {
-    correct: bool,
-}
-
 struct RandomWalker {
-    id: String,
     problem: String,
     room_count: u32,
-    base_url: String,
+    requester: Requester,
 }
 
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
@@ -117,11 +64,7 @@ impl Action {
 }
 
 impl RandomWalker {
-    fn new(
-        problem: String,
-        team_id: String,
-        base_url: String,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    fn new(problem: String, requester: Requester) -> Result<Self, Box<dyn std::error::Error>> {
         let room_count = match problem.as_str() {
             "probatio" => 3,
             "primus" => 6,
@@ -132,48 +75,18 @@ impl RandomWalker {
             _ => return Err("Invalid problem name".into()),
         };
 
-        let client = reqwest::blocking::Client::new();
-
-        // Select problem
-        let select_req = SelectRequest {
-            id: team_id.clone(),
-            problem_name: problem.clone(),
-        };
-        let response = client
-            .post(format!("{}/select", base_url))
-            .json(&select_req)
-            .send()?;
-
-        let response_text = response.text()?;
-        println!("Select response text: {}", response_text);
-
-        let select_resp: SelectResponse = serde_json::from_str(&response_text)?;
+        let select_resp = requester.select(problem.clone())?;
         println!("Selected problem: {:?}", select_resp);
 
         Ok(RandomWalker {
-            id: team_id.clone(),
             problem,
             room_count,
-            base_url,
+            requester,
         })
     }
 
     fn explore(&mut self, plans: &[String]) -> Result<Vec<Vec<i8>>, Box<dyn std::error::Error>> {
-        let client = reqwest::blocking::Client::new();
-        let explore_req = ExploreRequest {
-            id: self.id.clone(),
-            plans: plans.to_vec(),
-        };
-
-        let response = client
-            .post(format!("{}/explore", self.base_url))
-            .json(&explore_req)
-            .send()?;
-
-        let response_text = response.text()?;
-        println!("Explore response text: {}", response_text);
-
-        let explore_resp: ExploreResponse = serde_json::from_str(&response_text)?;
+        let explore_resp = self.requester.explore(plans.to_vec())?;
         println!("Explored: {:?}", explore_resp);
 
         // Store the result
@@ -677,23 +590,13 @@ impl RandomWalker {
             }
         }
 
-        let client = reqwest::blocking::Client::new();
-        let guess_req = GuessRequest {
-            id: self.id.clone(),
-            map: GuessRequestMap {
-                rooms: node_label.clone(),
-                starting_room: start_index,
-                connections,
-            },
-        };
+        let guess_resp = self.requester.guess(GuessRequestMap {
+            rooms: node_label.clone(),
+            starting_room: start_index,
+            connections,
+        })?;
 
-        let response = client
-            .post(format!("{}/guess", self.base_url))
-            .json(&guess_req)
-            .send()?;
-
-        let response_text = response.text()?;
-        println!("Guess response text: {}", response_text);
+        println!("Guess response: {:?}", guess_resp);
 
         Ok(true)
     }
@@ -712,6 +615,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let problem = args[1].clone();
     let team_id = args.get(2).cloned().unwrap_or_else(|| "hoge".to_string());
 
+    let requester = Requester::new(args.get(2).cloned());
+
     // Determine base URL
     let base_url = if args.len() > 2 {
         "https://31pwr5t6ij.execute-api.eu-west-2.amazonaws.com".to_string()
@@ -723,7 +628,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Team ID: {}", team_id);
     println!("Base URL: {}", base_url);
 
-    let mut walker = RandomWalker::new(problem, team_id, base_url)?;
+    let mut walker = RandomWalker::new(problem, requester)?;
     walker.random_walk()?;
 
     Ok(())
