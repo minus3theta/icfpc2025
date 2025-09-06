@@ -127,7 +127,7 @@ impl Problem {
                     v.into_iter()
                         .map(|v| {
                             v.into_iter()
-                                .map(|v| Some(v.unwrap() + &random.random_range(0..ploidy) * size))
+                                .map(|v| Some(v.unwrap() + random.random_range(0..ploidy) * size))
                                 .collect::<Vec<Option<usize>>>()
                         })
                         .collect::<Vec<_>>()
