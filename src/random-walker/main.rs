@@ -291,7 +291,7 @@ impl<R: Requester> RandomWalker<R> {
 
                 // 推測を実行
                 let correct = self.guess(
-                    self.room_count as usize,
+                    self.room_count,
                     &exploration_plans,
                     &results,
                     &label_observation,
