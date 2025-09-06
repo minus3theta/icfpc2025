@@ -1,26 +1,82 @@
 [
   {
     "name": "probatio",
-    "size": 3
+    "size": 3,
+    "version": 1
   },
   {
     "name": "primus",
-    "size": 6
+    "size": 6,
+    "version": 1
   },
   {
     "name": "secundus",
-    "size": 12
+    "size": 12,
+    "version": 1
   },
   {
     "name": "tertius",
-    "size": 18
+    "size": 18,
+    "version": 1
   },
   {
     "name": "quartus",
-    "size": 24
+    "size": 24,
+    "version": 1
   },
   {
     "name": "quintus",
-    "size": 30
+    "size": 30,
+    "version": 1
+  },
+  {
+    "name": "aleph",
+    "size": 12,
+    "version": 2
+  },
+  {
+    "name": "beth",
+    "size": 24,
+    "version": 2
+  },
+  {
+    "name": "gimel",
+    "size": 36,
+    "version": 2
+  },
+  {
+    "name": "daleth",
+    "size": 48,
+    "version": 2
+  },
+  {
+    "name": "he",
+    "size": 60,
+    "version": 2
+  },
+  {
+    "name": "vau",
+    "size": 18,
+    "version": 2
+  },
+  {
+    "name": "zain",
+    "size": 36,
+    "version": 2
+  },
+  {
+    "name": "hhet",
+    "size": 54,
+    "version": 2
+  },
+  {
+    "name": "teth",
+    "size": 72,
+    "version": 2
+  },
+  {
+    "name": "iod",
+    "size": 90,
+    "version": 2
   }
 ]
