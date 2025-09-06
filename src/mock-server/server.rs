@@ -28,7 +28,7 @@ impl Server {
             .get(&req.problem_name)
             .ok_or("Problem definition not found")?;
 
-        let problem = Problem::new(definition.size);
+        let problem = Problem::new(definition.size, definition.max_plan_length);
         info!("Problem generated:\n{}", problem.pretty_print());
 
         self.problems

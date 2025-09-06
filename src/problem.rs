@@ -5,12 +5,13 @@ use rand::Rng;
 pub struct Problem {
     starting_room: usize,
     connections: Vec<Vec<usize>>,
+    max_plan_length: usize,
 }
 
 const DOOR_COUNT: usize = 6;
 
 impl Problem {
-    pub fn new(size: usize) -> Self {
+    pub fn new(size: usize, max_plan_length: usize) -> Self {
         // 各部屋は 6　つの扉を持つ
         let mut remain_count = vec![DOOR_COUNT; size];
         let mut connections = vec![vec![None; DOOR_COUNT]; size];
@@ -123,12 +124,17 @@ impl Problem {
                 .into_iter()
                 .map(|v| v.into_iter().map(|v| v.unwrap()).collect())
                 .collect(),
+            max_plan_length,
         }
     }
 
     pub fn explore(&self, plan: &str) -> Result<Vec<usize>, String> {
         let mut result = Vec::new();
         let mut current_room = self.starting_room;
+
+        if plan.len() > self.max_plan_length {
+            return Err(format!("Plan length is too long: {}", plan.len()));
+        }
 
         result.push(current_room);
 
