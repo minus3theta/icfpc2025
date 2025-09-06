@@ -6,78 +6,20 @@ use std::fs::File;
 use std::io::BufReader;
 
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 
 use log::info;
 
 use crate::problem::Problem;
 
-#[derive(Deserialize)]
-pub struct ProblemDefinition {
-    name: String,
-    size: usize,
-}
+#[path = "../types.rs"]
+mod types;
+
+use types::*;
+pub use types::{ExploreRequest, GuessRequest, SelectRequest};
 
 pub struct Server {
     definitions: HashMap<String, ProblemDefinition>,
     problems: RwLock<HashMap<String, Problem>>,
-}
-
-#[derive(Deserialize)]
-pub struct SelectRequest {
-    id: String,
-    #[serde(rename = "problemName")]
-    problem_name: String,
-}
-
-#[derive(Serialize)]
-pub struct SelectResponse {
-    #[serde(rename = "problemName")]
-    problem_name: String,
-}
-
-#[derive(Deserialize)]
-pub struct ExploreRequest {
-    id: String,
-    plans: Vec<String>,
-}
-
-#[derive(Serialize)]
-pub struct ExploreResponse {
-    results: Vec<Vec<i8>>,
-    #[serde(rename = "queryCount")]
-    query_count: usize,
-}
-
-#[derive(Deserialize)]
-pub struct GuessRequest {
-    id: String,
-    map: GuessReuqestMap,
-}
-
-#[derive(Deserialize)]
-struct GuessReuqestMap {
-    rooms: Vec<i8>,
-    #[serde(rename = "startingRoom")]
-    starting_room: usize,
-    connections: Vec<GuessRequestConnection>,
-}
-
-#[derive(Deserialize)]
-struct GuessRequestConnection {
-    from: GuessRequestRoom,
-    to: GuessRequestRoom,
-}
-
-#[derive(Deserialize)]
-struct GuessRequestRoom {
-    room: usize,
-    door: usize,
-}
-
-#[derive(Serialize)]
-pub struct GuessResponse {
-    correct: bool,
 }
 
 impl Server {
