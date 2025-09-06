@@ -17,6 +17,7 @@ pub struct ProblemDefinition {
     pub version: usize,
     pub max_plan_length: usize,
     pub label_rewritable: bool,
+    pub ploidy: usize,
 }
 
 pub struct ProblemDefinitions {
@@ -46,10 +47,15 @@ impl ProblemDefinitions {
                             version: d.version,
                             max_plan_length: match d.version {
                                 1 => 18 * d.size,
-                                2 => 6 * d.size,
+                                2 | 3 => 6 * d.size,
                                 _ => 0,
                             },
                             label_rewritable: d.version >= 2,
+                            ploidy: match d.version {
+                                2 => 2,
+                                3 => 3,
+                                _ => 1,
+                            },
                         },
                     )
                 })

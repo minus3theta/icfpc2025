@@ -11,7 +11,8 @@ pub struct Problem {
 const DOOR_COUNT: usize = 6;
 
 impl Problem {
-    pub fn new(size: usize, max_plan_length: usize) -> Self {
+    pub fn new(size: usize, max_plan_length: usize, ploidy: usize) -> Self {
+        let size = size / ploidy;
         // 各部屋は 6　つの扉を持つ
         let mut remain_count = vec![DOOR_COUNT; size];
         let mut connections = vec![vec![None; DOOR_COUNT]; size];
@@ -24,7 +25,7 @@ impl Problem {
 
         let mut random = rand::rng();
         // 初期位置をランダムに選択する
-        let starting_room = random.random_range(0..size);
+        let mut starting_room = random.random_range(0..size);
         connected.insert(starting_room);
         unconnected.remove(&starting_room);
 
@@ -118,6 +119,50 @@ impl Problem {
 
         assert!(available_doors == 0);
 
+        if ploidy > 1 {
+            // 乱数付きで n 倍にする
+            starting_room += random.random_range(0..ploidy) * size;
+            connections = itertools::repeat_n(connections, ploidy)
+                .enumerate()
+                .flat_map(|(i, v)| {
+                    v.into_iter()
+                        .map(|v| {
+                            v.into_iter()
+                                .map(|v| Some(v.unwrap() + i * size))
+                                .collect::<Vec<Option<usize>>>()
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+
+            // ランダムに ploidy 間で接続を入れ替える
+            for from_room in 0..size {
+                for from_door in 0..DOOR_COUNT {
+                    let to_room = connections[from_room][from_door].unwrap();
+                    if to_room % size < from_room % size {
+                        continue;
+                    }
+                    for to_door in 0..DOOR_COUNT {
+                        if from_room == to_room && from_door <= to_door {
+                            continue;
+                        }
+                        if connections[to_room][to_door].unwrap() == from_room {
+                            let delta = random.random_range(0..ploidy) * size;
+                            for i in 0..ploidy {
+                                connections[from_room + i * size][from_door] = connections
+                                    [from_room + i * size][from_door]
+                                    .map(|v| (v + delta) % (size * ploidy));
+                                connections[to_room + i * size][to_door] = connections
+                                    [to_room + i * size][to_door]
+                                    .map(|v| (v + size * ploidy - delta) % (size * ploidy));
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         Self {
             starting_room,
             connections: connections
@@ -129,21 +174,42 @@ impl Problem {
     }
 
     pub fn explore(&self, plan: &str) -> Result<Vec<usize>, String> {
+        let mut room_digits = (0..self.connections.len()).collect::<Vec<usize>>();
+
         let mut result = Vec::new();
         let mut current_room = self.starting_room;
 
-        if plan.len() > self.max_plan_length {
-            return Err(format!("Plan length is too long: {}", plan.len()));
-        }
+        result.push(room_digits[current_room]);
 
-        result.push(current_room);
-
+        let mut remaining_plan = self.max_plan_length;
+        let mut writing_mode = false;
         for c in plan.chars() {
-            if !('0'..'6').contains(&c) {
-                return Err(format!("Invalid plan: {}", plan));
+            if c == '[' {
+                writing_mode = true;
+                continue;
             }
-            current_room = self.connections[current_room][(c as u8 - b'0') as usize];
-            result.push(current_room);
+            if c == ']' {
+                writing_mode = false;
+                continue;
+            }
+            if writing_mode {
+                if !('0'..'4').contains(&c) {
+                    return Err(format!("Invalid plan: {}", plan));
+                }
+                room_digits[current_room] = (c as u8 - b'0') as usize;
+                result.push(room_digits[current_room]);
+            } else {
+                if !('0'..'6').contains(&c) {
+                    return Err(format!("Invalid plan: {}", plan));
+                }
+                current_room = self.connections[current_room][(c as u8 - b'0') as usize];
+                result.push(room_digits[current_room]);
+
+                if remaining_plan == 0 {
+                    return Err(format!("Plan length is too long: {}", plan.len()));
+                }
+                remaining_plan -= 1;
+            }
         }
         Ok(result)
     }
@@ -178,6 +244,10 @@ impl Problem {
         starting_room: usize,
         connections: Vec<Vec<usize>>,
     ) -> Result<bool, String> {
+        if rooms.len() != self.connections.len() {
+            return Ok(false);
+        }
+
         let mut mapping = vec![usize::MAX; rooms.len()];
 
         self.guess_visit(
