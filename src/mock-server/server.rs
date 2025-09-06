@@ -11,10 +11,7 @@ use log::info;
 
 use crate::problem::Problem;
 
-#[path = "../types.rs"]
-mod types;
-
-use types::*;
+use icfpc2025::types::{self, *};
 pub use types::{ExploreRequest, GuessRequest, SelectRequest};
 
 pub struct Server {
