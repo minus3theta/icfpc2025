@@ -149,6 +149,9 @@ impl Problem {
         guessed_room: usize,
         mapping: &mut Vec<usize>,
     ) {
+        if current_room >= connections.len() {
+            return;
+        }
         if mapping[current_room] != usize::MAX {
             return;
         }
