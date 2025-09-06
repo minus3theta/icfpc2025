@@ -1,14 +1,15 @@
 import requests
-from typing import List
+from typing import List, Tuple
 
 
 class Server:
     def __init__(self, mock: bool = False):
         if mock:
             self.url = "http://localhost:8080"
+            self.our_id = "Gon The Fox"
         else:
             self.url = "https://31pwr5t6ij.execute-api.eu-west-2.amazonaws.com"
-        self.our_id = "yone.j.synthesis@gmail.com nsRDwhEnX4yrlBibSH7pvw"
+            self.our_id = "yone.j.synthesis@gmail.com nsRDwhEnX4yrlBibSH7pvw"
 
     def select(self, problem_name: str):
         if problem_name == "probatio":
@@ -38,8 +39,8 @@ class Server:
         assert "queryCount" in data
         return data
 
-    def guess(self, starting_room: int, connections):
-        # [[0 1 2 1], ...]
+    def guess(self, starting_room: int, connections: List[Tuple[int]]):
+        # connections: [ (0 1 2 1), ... ]
         rooms = list(range(self.N))
 
         connections_map = []

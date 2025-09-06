@@ -13,9 +13,7 @@ def solve(problem_name):
         solve_probatio()
     else:
         raise ValueError(f"Unknown problem name: {problem_name}")
-        # print(f'Problem "{problem_name}" is not supported')
 
-DOORS = 6
 
 def solve_probatio(mock: bool = False):
     server = Server(mock=mock)
@@ -23,17 +21,17 @@ def solve_probatio(mock: bool = False):
 
     # explore
     N = server.N
+    DOORS = 6
+
     visited = [False for i in range(N)]
     explored_from = [False for i in range(N)]
     route_to = [None for i in range(N)]
     result_from_room = [None for i in range(N)]
-    # passed_count = [[0 for i in range(N)] for j in range(N)]
     doors_from = [[[] for i in range(N)] for j in range(N)]  # [from][to] = [doors on from_side]
 
     response = server.explore(["0"])
     starting_room = response["results"][0][0]
     print("starting_room:", response, starting_room)
-    ## starting_room = 0  ##
 
     visited[starting_room] = True
     route_to[starting_room] = ""
@@ -43,8 +41,8 @@ def solve_probatio(mock: bool = False):
         response = server.explore(plans)
         results = response["results"]
         query_count = response["queryCount"]
-        # print("exploring from", here, ":", results)
         print("queryCount:", query_count)
+
         result_from_room[here] = [result[-1] for result in results]
         print("result_from_room", here, ":", result_from_room[here])
         assert len(result_from_room[here]) == DOORS
@@ -64,18 +62,22 @@ def solve_probatio(mock: bool = False):
                         route_to[to_room] = route_to[here] + str(door_no)
                 explored_from[here] = True
 
-    if not visited[1] and not visited[2]:
-        raise ValueError(f"Unsolvable because all the doors of Room#0 leads to itself")
+    # check unvisited rooms
+    unvisited_count = 0
+    for room in range(3):
+        if not visited[room]:
+            unvisited_count += 1
+            doors_from[room][room] = range(DOORS)
 
-    if not visited[1]:
-        doors_from[1][1] = range(DOORS)
-    if not visited[2]:
-        doors_from[2][2] = range(DOORS)
+    assert 0 <= unvisited_count <= 2
+    if unvisited_count == 2:
+        raise ValueError(f"Unsolvable because all the doors of Room#0 leads to itself")
 
     for from_room in range(N):
         for to_room in range(N):
             print(f"doors_from[{from_room}][{to_room}]:", doors_from[from_room][to_room])
 
+    # make graph
     connections = []
     for room in range(N):
         for door in doors_from[room][room]:
@@ -91,8 +93,7 @@ def solve_probatio(mock: bool = False):
                 connections.append((from_room, from_door, to_room, to_door))
                 print(f"connect {from_room}.{from_door} <-> {to_room}.{to_door}")
 
-    # print("connection:", connections)
-
+    # submit our guess
     verdict = server.guess(starting_room, connections)
     print("VERDICT:", verdict)
 
