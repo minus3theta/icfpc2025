@@ -23,6 +23,12 @@ pub struct ProblemDefinitions {
     definitions: HashMap<String, ProblemDefinition>,
 }
 
+impl Default for ProblemDefinitions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProblemDefinitions {
     pub fn new() -> Self {
         let file = File::open("problems.json").unwrap();
@@ -43,10 +49,7 @@ impl ProblemDefinitions {
                                 2 => 6 * d.size,
                                 _ => 0,
                             },
-                            label_rewritable: match d.version {
-                                2 => true,
-                                _ => false,
-                            },
+                            label_rewritable: d.version >= 2,
                         },
                     )
                 })
