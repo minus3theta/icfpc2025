@@ -77,10 +77,6 @@ impl Problem {
         for from_room in 0..size {
             for from_door in 0..DOOR_COUNT {
                 if connections[from_room][from_door].is_none() {
-                    remain_count[from_room] -= 1;
-                    connections[from_room][from_door] = Some(usize::MAX);
-                    available_doors -= 1;
-
                     // 接続先を選択する
                     let mut index = random.random_range(0..available_doors);
                     let mut to_room = usize::MAX;
@@ -106,6 +102,12 @@ impl Problem {
 
                     // 接続する
                     connections[from_room][from_door] = Some(to_room);
+                    remain_count[from_room] -= 1;
+                    available_doors -= 1;
+                    if from_room == to_room && from_door == to_door {
+                        // 自己ループでは 1 つだけ減らす
+                        continue;
+                    }
                     connections[to_room][to_door] = Some(from_room);
                     remain_count[to_room] -= 1;
                     available_doors -= 1;
