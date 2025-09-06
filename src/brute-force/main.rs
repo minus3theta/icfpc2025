@@ -76,7 +76,7 @@ impl BruteForce {
             let results = self.explore(&plans)?;
 
             for (request, chunk) in requests.into_iter().zip_eq(results.chunks(suffixes.len())) {
-                let res = chunk.iter().cloned().collect::<Vec<Vec<i8>>>();
+                let res = chunk.to_vec();
                 // 部屋の数字
                 let room_digit = res[0][res[0].len() - suffix_length - 1];
                 // 部屋ハッシュのようなもの
