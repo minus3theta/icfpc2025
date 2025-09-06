@@ -104,6 +104,18 @@ struct RandomWalker {
     base_url: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
+struct Action {
+    label: i8,
+    door: usize,
+}
+
+impl Action {
+    fn new(label: i8, door: usize) -> Self {
+        Self { label, door }
+    }
+}
+
 impl RandomWalker {
     fn new(
         problem: String,
@@ -128,7 +140,7 @@ impl RandomWalker {
             problem_name: problem.clone(),
         };
         let response = client
-            .post(&format!("{}/select", base_url))
+            .post(format!("{}/select", base_url))
             .json(&select_req)
             .send()?;
 
@@ -146,15 +158,15 @@ impl RandomWalker {
         })
     }
 
-    fn explore(&mut self, plans: &Vec<String>) -> Result<Vec<Vec<i8>>, Box<dyn std::error::Error>> {
+    fn explore(&mut self, plans: &[String]) -> Result<Vec<Vec<i8>>, Box<dyn std::error::Error>> {
         let client = reqwest::blocking::Client::new();
         let explore_req = ExploreRequest {
             id: self.id.clone(),
-            plans: plans.clone(),
+            plans: plans.to_vec(),
         };
 
         let response = client
-            .post(&format!("{}/explore", self.base_url))
+            .post(format!("{}/explore", self.base_url))
             .json(&explore_req)
             .send()?;
 
@@ -220,15 +232,14 @@ impl RandomWalker {
 
     fn analyze_results(
         &self,
-        plans: &Vec<String>,
-        results: &Vec<Vec<i8>>,
-    ) -> Result<HashMap<(i8, usize), HashSet<i8>>, Box<dyn std::error::Error>> {
+        plans: &[String],
+        results: &[Vec<i8>],
+    ) -> Result<HashMap<Action, HashSet<i8>>, Box<dyn std::error::Error>> {
         println!("\n=== Analysis of Exploration Results ===");
 
         // 部屋のラベルとドアの組について、行先がとり得るラベルの値の集合を記録
-        let mut room_door_destinations: HashMap<(i8, usize), HashSet<i8>> = HashMap::new();
-        let mut room_door_destinations2: HashMap<(i8, usize, i8, usize), HashSet<i8>> =
-            HashMap::new();
+        let mut room_door_destinations: HashMap<Action, HashSet<i8>> = HashMap::new();
+        let mut room_door_destinations2: HashMap<(Action, Action), HashSet<i8>> = HashMap::new();
 
         // 各探索結果を分析
         for (i, result) in results.iter().enumerate() {
@@ -241,8 +252,8 @@ impl RandomWalker {
                 let door = plans[i][j..j + 1].parse::<usize>().unwrap();
                 let next_label = result[j + 1];
                 room_door_destinations
-                    .entry((label, door))
-                    .or_insert_with(HashSet::new)
+                    .entry(Action::new(label, door))
+                    .or_default()
                     .insert(next_label);
             }
             for j in 0..plans[i].len() - 1 {
@@ -252,8 +263,8 @@ impl RandomWalker {
                 let next_door = plans[i][j + 1..j + 2].parse::<usize>().unwrap();
                 let next_next_label = result[j + 2];
                 room_door_destinations2
-                    .entry((label, door, next_label, next_door))
-                    .or_insert_with(HashSet::new)
+                    .entry((Action::new(label, door), Action::new(next_label, next_door)))
+                    .or_default()
                     .insert(next_next_label);
             }
         }
@@ -263,28 +274,30 @@ impl RandomWalker {
         let mut sorted_keys: Vec<_> = room_door_destinations.keys().collect();
         sorted_keys.sort();
 
-        for &(room_label, door) in sorted_keys {
-            if let Some(destinations) = room_door_destinations.get(&(room_label, door)) {
+        for &action in sorted_keys.iter() {
+            if let Some(destinations) = room_door_destinations.get(action) {
                 let mut sorted_destinations: Vec<_> = destinations.iter().collect();
                 sorted_destinations.sort();
                 println!(
                     "  Room Label {} + Door {} -> {:?}",
-                    room_label, door, sorted_destinations
+                    action.label, action.door, sorted_destinations
                 );
             }
         }
 
         let mut sorted_keys2: Vec<_> = room_door_destinations2.keys().collect();
         sorted_keys2.sort();
-        for &(room_label, door, next_label, next_door) in sorted_keys2 {
-            if let Some(destinations) =
-                room_door_destinations2.get(&(room_label, door, next_label, next_door))
-            {
+        for &actions in sorted_keys2.iter() {
+            if let Some(destinations) = room_door_destinations2.get(actions) {
                 let mut sorted_destinations: Vec<_> = destinations.iter().collect();
                 sorted_destinations.sort();
                 println!(
                     "  Room Label {} + Door {} + Next Label {} + Next Door {} -> {:?}",
-                    room_label, door, next_label, next_door, sorted_destinations
+                    actions.0.label,
+                    actions.0.door,
+                    actions.1.label,
+                    actions.1.door,
+                    sorted_destinations
                 );
             }
         }
@@ -316,14 +329,15 @@ impl RandomWalker {
     fn guess(
         &self,
         node_count: usize,
-        plans: &Vec<String>,
-        results: &Vec<Vec<i8>>,
-        room_door_destinations: &HashMap<(i8, usize), HashSet<i8>>,
+        plans: &[String],
+        results: &[Vec<i8>],
+        room_door_destinations: &HashMap<Action, HashSet<i8>>,
     ) -> Result<bool, Box<dyn std::error::Error>> {
-        let mut num_rooms = vec![0, 0, 0, 0];
+        let mut num_rooms = [0; 4];
 
-        for ((label, _), destinations) in room_door_destinations.iter() {
-            num_rooms[*label as usize] = num_rooms[*label as usize].max(destinations.len());
+        for (action, destinations) in room_door_destinations.iter() {
+            num_rooms[action.label as usize] =
+                num_rooms[action.label as usize].max(destinations.len());
         }
 
         let sum_num_rooms = num_rooms.iter().sum::<usize>();
@@ -341,20 +355,20 @@ impl RandomWalker {
 
         let mut to_be_connected = results[0].len() - node_count;
 
-        for k in 0..plans.len() {
+        for (k, plan) in plans.iter().enumerate() {
             if results.len() <= k {
                 break;
             }
             // ラベルとドアの組み合わせに対し、行先の種類数がラベルに対応する部屋の数に一致するものについて、
             // 同じラベル・同じ行先の部屋は同じものとして統合する
-            for i in 0..plans[k].len() - 1 {
+            for i in 0..plan.len() - 1 {
                 let door_i = plans[k][i..i + 1].parse::<usize>().unwrap();
                 let label_i = results[k][i];
-                if !room_door_destinations.contains_key(&(label_i as i8, door_i as usize)) {
+                if !room_door_destinations.contains_key(&Action::new(label_i, door_i)) {
                     continue;
                 }
                 let destinations = room_door_destinations
-                    .get(&(label_i as i8, door_i as usize))
+                    .get(&Action::new(label_i, door_i))
                     .unwrap();
                 if destinations.len() != num_rooms[label_i as usize] {
                     continue;
@@ -392,16 +406,13 @@ impl RandomWalker {
                 break;
             }
             let mut updated = false;
-            for k in 0..plans.len() {
-                if results.len() <= k {
-                    break;
-                }
-                for i in 0..plans[k].len() - 1 {
-                    let door_i = plans[k][i..i + 1].parse::<usize>().unwrap();
+            for plan in plans.iter() {
+                for i in 0..plan.len() - 1 {
+                    let door_i = plan[i..i + 1].parse::<usize>().unwrap();
                     let root_i = uf.find(i);
                     let root_ni = uf.find(i + 1);
-                    for j in i + 1..plans[k].len() - 1 {
-                        let door_j = plans[k][j..j + 1].parse::<usize>().unwrap();
+                    for j in i + 1..plan.len() - 1 {
+                        let door_j = plan[j..j + 1].parse::<usize>().unwrap();
                         let root_j = uf.find(j);
                         let root_nj = uf.find(j + 1);
                         if root_i != root_j {
@@ -444,8 +455,8 @@ impl RandomWalker {
 
         // roots に対応する 0-index のインデックスを作る
         let mut root_to_index = HashMap::new();
-        for i in 0..roots.len() {
-            root_to_index.insert(roots[i], i);
+        for (i, root) in roots.iter().enumerate() {
+            root_to_index.insert(*root, i);
         }
         println!("Root to index: {:?}", root_to_index);
 
@@ -474,9 +485,9 @@ impl RandomWalker {
                 }
             }
 
-            for k in 0..plans.len() {
-                for i in 0..plans[k].len() {
-                    let door_i = plans[k][i..i + 1].parse::<usize>().unwrap();
+            for plan in plans.iter() {
+                for i in 0..plan.len() {
+                    let door_i = plan[i..i + 1].parse::<usize>().unwrap();
                     let root_i = uf.find(i);
                     let root_ni = uf.find(i + 1);
                     if root_to_index.contains_key(&root_i) && root_to_index.contains_key(&root_ni) {
@@ -545,9 +556,9 @@ impl RandomWalker {
             let mut updated = false;
 
             // 確定した頂点の確定した行先について、状態が不明なものがあれば設定する
-            for k in 0..plans.len() {
-                for i in 0..plans[k].len() {
-                    let door_i = plans[k][i..i + 1].parse::<usize>().unwrap();
+            for plan in plans.iter() {
+                for i in 0..plan.len() {
+                    let door_i = plan[i..i + 1].parse::<usize>().unwrap();
                     let root_i = uf.find(i);
                     if root_to_index.contains_key(&root_i) {
                         let index_i = root_to_index[&root_i];
@@ -565,9 +576,9 @@ impl RandomWalker {
             }
             // 頂点のラベルと選んだドアの組み合わせに対して、確定済みの行先と元の頂点の組の候補を列挙する
             let mut destination_candidates = HashMap::new();
-            for k in 0..plans.len() {
-                for i in 0..plans[k].len() {
-                    let door_i = plans[k][i..i + 1].parse::<usize>().unwrap();
+            for (k, plan) in plans.iter().enumerate() {
+                for i in 0..plan.len() {
+                    let door_i = plan[i..i + 1].parse::<usize>().unwrap();
                     let root_i = uf.find(i);
                     if root_to_index.contains_key(&root_i) {
                         let index_i = root_to_index[&root_i];
@@ -632,7 +643,11 @@ impl RandomWalker {
                 if remaining_connections[from_room][from_door] != !0 {
                     let to_room = remaining_connections[from_room][from_door];
                     if to_room == !0 {
-                        return Err(format!("Failed to find connection from room {}.{}", from_room, from_door).into());
+                        return Err(format!(
+                            "Failed to find connection from room {}.{}",
+                            from_room, from_door
+                        )
+                        .into());
                     }
                     remaining_connections[from_room][from_door] = !0;
                     for to_door in 0..6 {
@@ -651,7 +666,11 @@ impl RandomWalker {
                             break;
                         }
                         if to_door == 5 {
-                            return Err(format!("Failed to find connection from room {}.{} to room {}", from_room, from_door, to_room).into());
+                            return Err(format!(
+                                "Failed to find connection from room {}.{} to room {}",
+                                from_room, from_door, to_room
+                            )
+                            .into());
                         }
                     }
                 }
@@ -664,19 +683,19 @@ impl RandomWalker {
             map: GuessRequestMap {
                 rooms: node_label.clone(),
                 starting_room: start_index,
-                connections: connections,
+                connections,
             },
         };
 
         let response = client
-            .post(&format!("{}/guess", self.base_url))
+            .post(format!("{}/guess", self.base_url))
             .json(&guess_req)
             .send()?;
 
         let response_text = response.text()?;
         println!("Guess response text: {}", response_text);
 
-        return Ok(true);
+        Ok(true)
     }
 }
 
