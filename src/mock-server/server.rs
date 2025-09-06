@@ -84,7 +84,7 @@ impl Server {
 
         let correct = problem.guess(rooms, starting_room, connections)?;
 
-        return Ok(GuessResponse { correct });
+        Ok(GuessResponse { correct })
     }
 
     pub fn guess(&self, req: GuessRequest, keep_problem: bool) -> Result<GuessResponse, String> {
