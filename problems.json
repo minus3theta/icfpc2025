@@ -57,26 +57,26 @@
   {
     "name": "vau",
     "size": 18,
-    "version": 2
+    "version": 3
   },
   {
     "name": "zain",
     "size": 36,
-    "version": 2
+    "version": 3
   },
   {
     "name": "hhet",
     "size": 54,
-    "version": 2
+    "version": 3
   },
   {
     "name": "teth",
     "size": 72,
-    "version": 2
+    "version": 3
   },
   {
     "name": "iod",
     "size": 90,
-    "version": 2
+    "version": 3
   }
 ]

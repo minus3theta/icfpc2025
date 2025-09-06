@@ -11,7 +11,8 @@ pub struct Problem {
 const DOOR_COUNT: usize = 6;
 
 impl Problem {
-    pub fn new(size: usize, max_plan_length: usize) -> Self {
+    pub fn new(size: usize, max_plan_length: usize, ploidy: usize) -> Self {
+        let size = size / ploidy;
         // 各部屋は 6　つの扉を持つ
         let mut remain_count = vec![DOOR_COUNT; size];
         let mut connections = vec![vec![None; DOOR_COUNT]; size];
@@ -24,7 +25,7 @@ impl Problem {
 
         let mut random = rand::rng();
         // 初期位置をランダムに選択する
-        let starting_room = random.random_range(0..size);
+        let mut starting_room = random.random_range(0..size);
         connected.insert(starting_room);
         unconnected.remove(&starting_room);
 
@@ -117,6 +118,23 @@ impl Problem {
         }
 
         assert!(available_doors == 0);
+
+        if ploidy > 1 {
+            // 乱数付きで n 倍にする
+            starting_room = starting_room + random.random_range(0..ploidy) * size;
+            connections = itertools::repeat_n(connections, ploidy)
+                .map(|v| {
+                    v.into_iter()
+                        .map(|v| {
+                            v.into_iter()
+                                .map(|v| Some(v.unwrap() + &random.random_range(0..ploidy) * size))
+                                .collect::<Vec<Option<usize>>>()
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .flatten()
+                .collect();
+        }
 
         Self {
             starting_room,
