@@ -22,8 +22,6 @@ class Server:
         }
         response = requests.post(self.url + "/select", json=payload)
         data = response.json()
-        if "Ok" in data:
-            data = data["Ok"]
         print(data)
         assert data["problemName"] == problem_name
         return data
@@ -35,8 +33,6 @@ class Server:
         }
         response = requests.post(self.url + "/explore", json=payload)
         data = response.json()
-        if "Ok" in data:
-            data = data["Ok"]
         print(data)
         assert "results" in data
         assert "queryCount" in data
@@ -71,8 +67,6 @@ class Server:
         }
         response = requests.post(self.url + "/guess", json=payload)
         data = response.json()
-        if "Ok" in data:
-            data = data["Ok"]
         print(data)
         assert "correct" in data
         return data["correct"]
