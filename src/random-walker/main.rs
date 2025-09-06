@@ -44,10 +44,10 @@ impl UnionFind {
     }
 }
 
-struct RandomWalker {
+struct RandomWalker<R> {
     problem: String,
     room_count: u32,
-    requester: Requester,
+    requester: R,
 }
 
 struct LabelObservationNode {
@@ -234,8 +234,8 @@ impl LabelObservation {
     }
 }
 
-impl RandomWalker {
-    fn new(problem: String, requester: Requester) -> Result<Self, Box<dyn std::error::Error>> {
+impl<R: Requester> RandomWalker<R> {
+    fn new(problem: String, requester: R) -> Result<Self, Box<dyn std::error::Error>> {
         let room_count = match problem.as_str() {
             "probatio" => 3,
             "primus" => 6,
@@ -892,7 +892,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let problem = args[1].clone();
     let team_id = args.get(2).cloned().unwrap_or_else(|| "hoge".to_string());
 
-    let requester = Requester::new(args.get(2).cloned());
+    let requester = HttpRequester::new(args.get(2).cloned());
 
     // Determine base URL
     let base_url = if args.len() > 2 {

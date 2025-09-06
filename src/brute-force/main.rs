@@ -5,17 +5,15 @@ use rand::Rng;
 
 use itertools::Itertools;
 
-#[path = "../request.rs"]
-mod request;
+use icfpc2025::request::*;
+use icfpc2025::types::*;
 
-use request::*;
-
-struct BruteForce {
-    requester: Requester,
+struct BruteForce<R> {
+    requester: R,
 }
 
-impl BruteForce {
-    fn new(problem: String, requester: Requester) -> Result<Self, Box<dyn std::error::Error>> {
+impl<R: Requester> BruteForce<R> {
+    fn new(problem: String, requester: R) -> Result<Self, Box<dyn std::error::Error>> {
         let select_resp = requester.select(problem.clone())?;
         println!("Selected problem: {:?}", select_resp);
 
@@ -225,7 +223,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let problem = args[1].clone();
 
-    let requester = Requester::new(args.get(2).cloned());
+    let requester = HttpRequester::new(args.get(2).cloned());
 
     println!("Problem: {}", problem);
 
