@@ -1,6 +1,4 @@
-mod types;
-
-pub use types::*;
+use crate::types::*;
 
 pub struct Requester {
     id: String,

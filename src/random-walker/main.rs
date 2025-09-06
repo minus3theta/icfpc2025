@@ -1,11 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
 
-#[path = "../request.rs"]
-mod request;
-
 use rand::seq::SliceRandom;
-use request::*;
+
+use icfpc2025::request::*;
+use icfpc2025::types::*;
 
 const QUERY_NUM: usize = 10;
 
