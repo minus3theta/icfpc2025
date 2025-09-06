@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
 
-use rand::Rng;
-use serde::{Deserialize, Serialize};
-
 #[path = "../request.rs"]
 mod request;
 
+use rand::seq::SliceRandom;
 use request::*;
+
+const QUERY_NUM: usize = 10;
 
 #[derive(Debug)]
 struct UnionFind {
@@ -51,15 +51,187 @@ struct RandomWalker {
     requester: Requester,
 }
 
-#[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
-struct Action {
-    label: i8,
-    door: usize,
+struct LabelObservationNode {
+    child: HashMap<usize, HashMap<i8, LabelObservationNode>>,
 }
 
-impl Action {
-    fn new(label: i8, door: usize) -> Self {
-        Self { label, door }
+impl LabelObservationNode {
+    fn new() -> Self {
+        Self {
+            child: HashMap::new(),
+        }
+    }
+
+    fn add_child(&mut self, door: usize, label: i8) {
+        if !self.child.contains_key(&door) || !self.child[&door].contains_key(&label) {
+            self.child
+                .entry(door)
+                .or_default()
+                .insert(label, LabelObservationNode::new());
+        }
+    }
+
+    fn get_child(&self, door: usize, label: i8) -> Option<&LabelObservationNode> {
+        self.child.get(&door).and_then(|c| c.get(&label))
+    }
+
+    fn get_child_mut(&mut self, door: usize, label: i8) -> Option<&mut LabelObservationNode> {
+        self.child.get_mut(&door).and_then(|c| c.get_mut(&label))
+    }
+
+    fn get_size(&self) -> usize {
+        let mut res = 1;
+        for c in self.child.values() {
+            let mut sum = 0;
+            for c in c.values() {
+                sum += c.get_size();
+            }
+            res = res.max(sum);
+        }
+        res
+    }
+
+    fn is_unique(&self) -> bool {
+        self.get_size() == 1
+    }
+
+    fn is_max_selection(&self, door: usize) -> bool {
+        let mut max_size = 0;
+        let mut cur_size = 0;
+        for (k, v) in self.child.iter() {
+            let mut sum = 0;
+            for c in v.values() {
+                sum += c.get_size();
+            }
+            max_size = max_size.max(sum);
+            if k == &door {
+                cur_size = sum;
+            }
+        }
+        cur_size == max_size
+    }
+}
+
+struct LabelObservation {
+    nodes: [LabelObservationNode; 4],
+}
+
+impl LabelObservation {
+    fn new() -> Self {
+        Self {
+            nodes: [
+                LabelObservationNode::new(),
+                LabelObservationNode::new(),
+                LabelObservationNode::new(),
+                LabelObservationNode::new(),
+            ],
+        }
+    }
+
+    fn get_size(&self, label: i8) -> usize {
+        self.nodes[label as usize].get_size()
+    }
+
+    fn get_sum_size(&self) -> usize {
+        self.nodes.iter().map(|n| n.get_size()).sum()
+    }
+
+    fn add_child(&mut self, label: i8, door: usize, destination_label: i8) {
+        self.nodes[label as usize].add_child(door, destination_label);
+    }
+
+    fn add_child_2step(
+        &mut self,
+        label0: i8,
+        door0: usize,
+        label1: i8,
+        door1: usize,
+        destination_label: i8,
+    ) {
+        self.add_child(label0, door0, label1);
+        self.nodes[label0 as usize]
+            .get_child_mut(door0, label1)
+            .unwrap()
+            .add_child(door1, destination_label);
+    }
+
+    fn add_child_3step(&mut self, label: &[i8], door: &[usize], destination_label: i8) {
+        self.add_child_2step(label[0], door[0], label[1], door[1], label[2]);
+        self.nodes[label[0] as usize]
+            .get_child_mut(door[0], label[1])
+            .unwrap()
+            .get_child_mut(door[1], label[2])
+            .unwrap()
+            .add_child(door[2], destination_label);
+    }
+
+    fn is_unique_1step(&self, label: i8, door: usize, destination_label: i8) -> bool {
+        // このドアを選んだ場合の行先が、このラベルに対応する部屋の中で最も多くの行先を持つドアであり、かつその行先が一意かどうかをチェック
+        self.nodes[label as usize].is_max_selection(door)
+            && self.nodes[label as usize]
+                .get_child(door, destination_label)
+                .is_some()
+            && self.nodes[label as usize]
+                .get_child(door, destination_label)
+                .unwrap()
+                .is_unique()
+    }
+
+    fn is_unique_2step(
+        &self,
+        label0: i8,
+        door0: usize,
+        label1: i8,
+        door1: usize,
+        destination_label: i8,
+    ) -> bool {
+        // このドアを選んだ場合の行先が、このラベルに対応する部屋の中で最も多くの行先を持つドアであり、かつその行先が一意かどうかをチェック
+        if !self.nodes[label0 as usize].is_max_selection(door0) {
+            return false;
+        }
+        let child = self.nodes[label0 as usize].get_child(door0, label1);
+        if child.is_none() {
+            return false;
+        }
+        let child = child.unwrap();
+        if !child.is_max_selection(door1) {
+            return false;
+        }
+        let child = child.get_child(door1, destination_label);
+        if child.is_none() {
+            return false;
+        }
+        let child = child.unwrap();
+        child.is_unique()
+    }
+
+    fn is_unique_3step(&self, label: &[i8], door: &[usize], destination_label: i8) -> bool {
+        // このドアを選んだ場合の行先が、このラベルに対応する部屋の中で最も多くの行先を持つドアであり、かつその行先が一意かどうかをチェック
+        if !self.nodes[label[0] as usize].is_max_selection(door[0]) {
+            return false;
+        }
+        let child0 = self.nodes[label[0] as usize].get_child(door[0], label[1]);
+        if child0.is_none() {
+            return false;
+        }
+        let child0 = child0.unwrap();
+        if !child0.is_max_selection(door[1]) {
+            return false;
+        }
+        let child1 = child0.get_child(door[1], label[2]);
+        if child1.is_none() {
+            return false;
+        }
+        let child1 = child1.unwrap();
+        if !child1.is_max_selection(door[2]) {
+            return false;
+        }
+        let child2 = child1.get_child(door[2], destination_label);
+        if child2.is_none() {
+            return false;
+        }
+        let child2 = child2.unwrap();
+        child2.is_unique()
     }
 }
 
@@ -95,20 +267,22 @@ impl RandomWalker {
 
     fn random_walk(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let mut rng = rand::rng();
-        let exploration_length = 18 * self.room_count as usize;
 
         println!("Starting random walk for problem: {}", self.problem);
         println!("Room count: {}", self.room_count);
-        println!("Exploration length: {}", exploration_length);
 
         // 長さ18*room_countのランダムな探索列を生成
         let mut exploration_plans = Vec::new();
-        for _ in 0..exploration_length {
-            let door = rng.random_range(0..6);
-            exploration_plans.push(door.to_string());
+        for _ in 0..QUERY_NUM {
+            let mut exploration_plan = Vec::new();
+            for i in 0..6 {
+                for _ in 0..3 * self.room_count {
+                    exploration_plan.push(i.to_string());
+                }
+            }
+            exploration_plan.shuffle(&mut rng);
+            exploration_plans.push(exploration_plan.join(""));
         }
-
-        let exploration_plans = vec![exploration_plans.join("")];
 
         println!("Generated exploration plans: {:?}", exploration_plans);
 
@@ -119,14 +293,14 @@ impl RandomWalker {
                 println!("Number of results: {}", results.len());
 
                 // 結果を分析
-                let room_door_destinations = self.analyze_results(&exploration_plans, &results)?;
+                let label_observation = self.analyze_results(&exploration_plans, &results)?;
 
                 // 推測を実行
                 let correct = self.guess(
                     self.room_count as usize,
                     &exploration_plans,
                     &results,
-                    &room_door_destinations,
+                    &label_observation,
                 )?;
                 if correct {
                     println!("✅ Guess successful!");
@@ -147,12 +321,10 @@ impl RandomWalker {
         &self,
         plans: &[String],
         results: &[Vec<i8>],
-    ) -> Result<HashMap<Action, HashSet<i8>>, Box<dyn std::error::Error>> {
+    ) -> Result<LabelObservation, Box<dyn std::error::Error>> {
         println!("\n=== Analysis of Exploration Results ===");
 
-        // 部屋のラベルとドアの組について、行先がとり得るラベルの値の集合を記録
-        let mut room_door_destinations: HashMap<Action, HashSet<i8>> = HashMap::new();
-        let mut room_door_destinations2: HashMap<(Action, Action), HashSet<i8>> = HashMap::new();
+        let mut label_observation = LabelObservation::new();
 
         // 各探索結果を分析
         for (i, result) in results.iter().enumerate() {
@@ -163,80 +335,95 @@ impl RandomWalker {
             for j in 0..plans[i].len() {
                 let label = result[j];
                 let door = plans[i][j..j + 1].parse::<usize>().unwrap();
-                let next_label = result[j + 1];
-                room_door_destinations
-                    .entry(Action::new(label, door))
-                    .or_default()
-                    .insert(next_label);
-            }
-            for j in 0..plans[i].len() - 1 {
-                let label = result[j];
-                let door = plans[i][j..j + 1].parse::<usize>().unwrap();
-                let next_label = result[j + 1];
-                let next_door = plans[i][j + 1..j + 2].parse::<usize>().unwrap();
-                let next_next_label = result[j + 2];
-                room_door_destinations2
-                    .entry((Action::new(label, door), Action::new(next_label, next_door)))
-                    .or_default()
-                    .insert(next_next_label);
-            }
-        }
 
-        // 結果を出力
-        println!("\nRoom Label + Door -> Possible Destination Labels:");
-        let mut sorted_keys: Vec<_> = room_door_destinations.keys().collect();
-        sorted_keys.sort();
+                // 1ステップの観測
+                if j + 1 < result.len() {
+                    let next_label = result[j + 1];
+                    label_observation.add_child(label, door, next_label);
+                }
 
-        for &action in sorted_keys.iter() {
-            if let Some(destinations) = room_door_destinations.get(action) {
-                let mut sorted_destinations: Vec<_> = destinations.iter().collect();
-                sorted_destinations.sort();
-                println!(
-                    "  Room Label {} + Door {} -> {:?}",
-                    action.label, action.door, sorted_destinations
-                );
+                // 2ステップの観測
+                if j + 2 < result.len() && j + 1 < plans[i].len() {
+                    let label2 = result[j + 1];
+                    let door2 = plans[i][j + 1..j + 2].parse::<usize>().unwrap();
+                    let next_label2 = result[j + 2];
+                    label_observation.add_child_2step(label, door, label2, door2, next_label2);
+                }
+
+                // 3ステップの観測
+                if j + 3 < result.len() && j + 2 < plans[i].len() {
+                    let label2 = result[j + 1];
+                    let door2 = plans[i][j + 1..j + 2].parse::<usize>().unwrap();
+                    let label3 = result[j + 2];
+                    let door3 = plans[i][j + 2..j + 3].parse::<usize>().unwrap();
+                    let next_label3 = result[j + 3];
+                    label_observation.add_child_3step(
+                        &[label, label2, label3],
+                        &[door, door2, door3],
+                        next_label3,
+                    );
+                }
             }
         }
 
-        let mut sorted_keys2: Vec<_> = room_door_destinations2.keys().collect();
-        sorted_keys2.sort();
-        for &actions in sorted_keys2.iter() {
-            if let Some(destinations) = room_door_destinations2.get(actions) {
-                let mut sorted_destinations: Vec<_> = destinations.iter().collect();
-                sorted_destinations.sort();
-                println!(
-                    "  Room Label {} + Door {} + Next Label {} + Next Door {} -> {:?}",
-                    actions.0.label,
-                    actions.0.door,
-                    actions.1.label,
-                    actions.1.door,
-                    sorted_destinations
-                );
+        println!("Label observation: {}", label_observation.get_sum_size());
+        for i in 0..4 {
+            println!("Label {} observation: {}", i, label_observation.get_size(i));
+        }
+
+        // is_unique である行動を出力する
+        for label0 in 0..4 {
+            for door0 in 0..6 {
+                for label1 in 0..4 {
+                    if label_observation.is_unique_1step(label0 as i8, door0, label1 as i8) {
+                        println!(
+                            "Label {} + Door {} : Label {} is unique",
+                            label0, door0, label1
+                        );
+                    } else {
+                        for door1 in 0..6 {
+                            for label2 in 0..4 {
+                                if label_observation.is_unique_2step(
+                                    label0 as i8,
+                                    door0,
+                                    label1 as i8,
+                                    door1,
+                                    label2 as i8,
+                                ) {
+                                    println!(
+                                        "Label {} + Door {} + Label {} + Door {} + Label {} is unique",
+                                        label0, door0, label1, door1, label2
+                                    );
+                                } else {
+                                    for door2 in 0..6 {
+                                        for label3 in 0..4 {
+                                            if label_observation.is_unique_3step(
+                                                &[label0 as i8, label1 as i8, label2 as i8],
+                                                &[door0, door1, door2],
+                                                label3 as i8,
+                                            ) {
+                                                println!(
+                                                    "Label {} + Door {} + Label {} + Door {} + Label {} + Door {}: Label {} is unique",
+                                                    label0,
+                                                    door0,
+                                                    label1,
+                                                    door1,
+                                                    label2,
+                                                    door2,
+                                                    label3
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        // 統計情報
-        println!("\n=== Statistics ===");
-        println!(
-            "Total room-door combinations found: {}",
-            room_door_destinations.len()
-        );
-
-        let mut total_destinations = 0;
-        for destinations in room_door_destinations.values() {
-            total_destinations += destinations.len();
-        }
-        println!("Total destination possibilities: {}", total_destinations);
-
-        if !room_door_destinations.is_empty() {
-            let avg_destinations = total_destinations as f64 / room_door_destinations.len() as f64;
-            println!(
-                "Average destinations per room-door combination: {:.2}",
-                avg_destinations
-            );
-        }
-
-        Ok(room_door_destinations)
+        Ok(label_observation)
     }
 
     fn guess(
@@ -244,16 +431,15 @@ impl RandomWalker {
         node_count: usize,
         plans: &[String],
         results: &[Vec<i8>],
-        room_door_destinations: &HashMap<Action, HashSet<i8>>,
+        label_observation: &LabelObservation,
     ) -> Result<bool, Box<dyn std::error::Error>> {
         let mut num_rooms = [0; 4];
 
-        for (action, destinations) in room_door_destinations.iter() {
-            num_rooms[action.label as usize] =
-                num_rooms[action.label as usize].max(destinations.len());
+        for (i, num_room) in num_rooms.iter_mut().enumerate() {
+            *num_room = label_observation.get_size(i as i8);
         }
 
-        let sum_num_rooms = num_rooms.iter().sum::<usize>();
+        let sum_num_rooms = label_observation.get_sum_size();
 
         if sum_num_rooms != node_count {
             println!(
@@ -264,9 +450,9 @@ impl RandomWalker {
         }
         println!("\n=== Analyzing Room Types by Label ===");
 
-        let mut uf = UnionFind::new(results[0].len());
+        let mut uf = UnionFind::new(QUERY_NUM * results[0].len());
 
-        let mut to_be_connected = results[0].len() - node_count;
+        let mut to_be_connected = QUERY_NUM * results[0].len() - node_count;
 
         for (k, plan) in plans.iter().enumerate() {
             if results.len() <= k {
@@ -277,39 +463,117 @@ impl RandomWalker {
             for i in 0..plan.len() - 1 {
                 let door_i = plans[k][i..i + 1].parse::<usize>().unwrap();
                 let label_i = results[k][i];
-                if !room_door_destinations.contains_key(&Action::new(label_i, door_i)) {
+                let door_i2 = if i + 1 < plan.len() {
+                    plans[k][i + 1..i + 2].parse::<usize>().unwrap()
+                } else {
+                    !0
+                };
+                let label_i2 = if i + 1 < results[k].len() {
+                    results[k][i + 1]
+                } else {
+                    !0
+                };
+                let door_i3 = if i + 2 < plan.len() {
+                    plans[k][i + 2..i + 3].parse::<usize>().unwrap()
+                } else {
+                    !0
+                };
+                let label_i3 = if i + 2 < results[k].len() {
+                    results[k][i + 2]
+                } else {
+                    !0
+                };
+                let label_i4 = if i + 3 < results[k].len() {
+                    results[k][i + 3]
+                } else {
+                    !0
+                };
+                let mut check_step = 0;
+                if label_observation.is_unique_1step(label_i, door_i, label_i2) {
+                    check_step = 1;
+                } else if label_i2 != !0
+                    && label_observation
+                        .is_unique_2step(label_i, door_i, label_i2, door_i2, label_i3)
+                {
+                    check_step = 2;
+                } else if label_i3 != !0
+                    && label_observation.is_unique_3step(
+                        &[label_i, label_i2, label_i3],
+                        &[door_i, door_i2, door_i3],
+                        label_i4,
+                    )
+                {
+                    check_step = 3;
+                } else if num_rooms[label_i as usize] > 1 {
                     continue;
                 }
-                let destinations = room_door_destinations
-                    .get(&Action::new(label_i, door_i))
-                    .unwrap();
-                if destinations.len() != num_rooms[label_i as usize] {
-                    continue;
-                }
-                let destination_i = results[k][i + 1];
-                for j in i + 1..plans[k].len() - 1 {
-                    let door_j = plans[k][j..j + 1].parse::<usize>().unwrap();
-                    let label_j = results[k][j];
-                    let destination_j = results[k][j + 1];
-                    if label_i != label_j {
-                        continue;
+                for (k2, plan2) in plans.iter().enumerate().skip(k) {
+                    if results.len() <= k2 {
+                        break;
                     }
-                    // ラベルに対応する部屋が1個しかなければ、同じラベルのものは同じ部屋で確定
-                    if num_rooms[label_i as usize] > 1 {
-                        // 選んだドアとその行先が同じなら同じ部屋とみなす
-                        if door_i != door_j {
+                    let start_idx = if k == k2 { i + 1 } else { 0 };
+                    for j in start_idx..plan2.len() - 1 {
+                        let label_j = results[k2][j];
+                        if label_i != label_j {
                             continue;
                         }
-                        if destination_i != destination_j {
-                            continue;
-                        }
-                    }
-                    if uf.find(i) == uf.find(j) {
-                        continue;
-                    }
+                        if num_rooms[label_i as usize] > 1 {
+                            let door_j = plan2[j..j + 1].parse::<usize>().unwrap();
+                            let label_j2 = results[k2][j + 1];
 
-                    uf.union(i, j);
-                    to_be_connected -= 1;
+                            // 選んだドアとその行先が同じなら同じ部屋とみなす
+                            if door_i != door_j {
+                                continue;
+                            }
+                            if label_i2 != label_j2 {
+                                continue;
+                            }
+                            if check_step >= 2 {
+                                let door_j2 = if j + 1 < plan2.len() {
+                                    plans[k2][j + 1..j + 2].parse::<usize>().unwrap()
+                                } else {
+                                    !0
+                                };
+                                let label_j3 = if j + 2 < results[k2].len() {
+                                    results[k2][j + 2]
+                                } else {
+                                    !0
+                                };
+                                if door_i2 != door_j2 {
+                                    continue;
+                                }
+                                if label_i3 != label_j3 {
+                                    continue;
+                                }
+                                if check_step >= 3 {
+                                    let door_j3 = if j + 2 < plan2.len() {
+                                        plan2[j + 2..j + 3].parse::<usize>().unwrap()
+                                    } else {
+                                        !0
+                                    };
+                                    let label_j4 = if j + 3 < results[k2].len() {
+                                        results[k2][j + 3]
+                                    } else {
+                                        !0
+                                    };
+                                    if door_i3 != door_j3 {
+                                        continue;
+                                    }
+                                    if label_i4 != label_j4 {
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                        let base_i = k * results[0].len();
+                        let base_j = k2 * results[0].len();
+                        if uf.find(base_i + i) == uf.find(base_j + j) {
+                            continue;
+                        }
+
+                        uf.union(base_i + i, base_j + j);
+                        to_be_connected -= 1;
+                    }
                 }
             }
         }
@@ -319,27 +583,35 @@ impl RandomWalker {
                 break;
             }
             let mut updated = false;
-            for plan in plans.iter() {
+            for (k, plan) in plans.iter().enumerate() {
+                let base_i = k * results[0].len();
                 for i in 0..plan.len() - 1 {
                     let door_i = plan[i..i + 1].parse::<usize>().unwrap();
-                    let root_i = uf.find(i);
-                    let root_ni = uf.find(i + 1);
-                    for j in i + 1..plan.len() - 1 {
-                        let door_j = plan[j..j + 1].parse::<usize>().unwrap();
-                        let root_j = uf.find(j);
-                        let root_nj = uf.find(j + 1);
-                        if root_i != root_j {
-                            continue;
+                    let root_i = uf.find(base_i + i);
+                    let root_ni = uf.find(base_i + i + 1);
+                    for (k2, plan2) in plans.iter().enumerate().skip(k) {
+                        if results.len() <= k2 {
+                            break;
                         }
-                        if door_i != door_j {
-                            continue;
+                        let start_idx = if k == k2 { i + 1 } else { 0 };
+                        let base_j = k2 * results[0].len();
+                        for j in start_idx..plan2.len() - 1 {
+                            let door_j = plan2[j..j + 1].parse::<usize>().unwrap();
+                            let root_j = uf.find(base_j + j);
+                            let root_nj = uf.find(base_j + j + 1);
+                            if root_i != root_j {
+                                continue;
+                            }
+                            if door_i != door_j {
+                                continue;
+                            }
+                            if root_ni == root_nj {
+                                continue;
+                            }
+                            uf.union(root_ni, root_nj);
+                            updated = true;
+                            to_be_connected -= 1;
                         }
-                        if root_ni == root_nj {
-                            continue;
-                        }
-                        uf.union(root_ni, root_nj);
-                        updated = true;
-                        to_be_connected -= 1;
                     }
                 }
             }
@@ -372,6 +644,7 @@ impl RandomWalker {
             root_to_index.insert(*root, i);
         }
         println!("Root to index: {:?}", root_to_index);
+        println!("Start index: {}", uf.find(0));
 
         // スタート地点が roots に含まれていなかったら特定失敗
         if !roots.contains(&uf.find(0)) {
@@ -381,7 +654,7 @@ impl RandomWalker {
         let start_index = root_to_index[&uf.find(0)];
         let mut node_label = vec![0; node_count];
         for (key, value) in root_to_index.iter() {
-            node_label[*value] = results[0][*key];
+            node_label[*value] = results[*key / results[0].len()][*key % results[0].len()];
         }
         let mut graph = vec![vec![!0; 6]; node_count];
         let mut destination_labels = vec![vec![!0; 6]; node_count];
@@ -390,7 +663,8 @@ impl RandomWalker {
             for k in 0..plans.len() {
                 for i in 0..plans[k].len() - 1 {
                     let door_i = plans[k][i..i + 1].parse::<usize>().unwrap();
-                    let root_i = uf.find(i);
+                    let base_i = k * results[0].len();
+                    let root_i = uf.find(base_i + i);
                     if root_to_index.contains_key(&root_i) {
                         destination_labels[root_to_index[&root_i]][door_i] =
                             results[k][i + 1] as usize;
@@ -398,11 +672,12 @@ impl RandomWalker {
                 }
             }
 
-            for plan in plans.iter() {
+            for (k, plan) in plans.iter().enumerate() {
                 for i in 0..plan.len() {
                     let door_i = plan[i..i + 1].parse::<usize>().unwrap();
-                    let root_i = uf.find(i);
-                    let root_ni = uf.find(i + 1);
+                    let base_i = k * results[0].len();
+                    let root_i = uf.find(base_i + i);
+                    let root_ni = uf.find(base_i + i + 1);
                     if root_to_index.contains_key(&root_i) && root_to_index.contains_key(&root_ni) {
                         graph[root_to_index[&root_i]][door_i] = root_to_index[&root_ni];
                     }
@@ -469,15 +744,16 @@ impl RandomWalker {
             let mut updated = false;
 
             // 確定した頂点の確定した行先について、状態が不明なものがあれば設定する
-            for plan in plans.iter() {
+            for (k, plan) in plans.iter().enumerate() {
                 for i in 0..plan.len() {
                     let door_i = plan[i..i + 1].parse::<usize>().unwrap();
-                    let root_i = uf.find(i);
+                    let base_i = k * results[0].len();
+                    let root_i = uf.find(base_i + i);
                     if root_to_index.contains_key(&root_i) {
                         let index_i = root_to_index[&root_i];
                         if graph[index_i][door_i] != !0 {
                             let index_j = graph[index_i][door_i];
-                            let root_j = uf.find(i + 1);
+                            let root_j = uf.find(base_i + i + 1);
                             if !root_to_index.contains_key(&root_j) {
                                 uf.size[roots[index_j]] += uf.size[root_j];
                                 uf.parent[root_j] = roots[index_j];
@@ -492,10 +768,11 @@ impl RandomWalker {
             for (k, plan) in plans.iter().enumerate() {
                 for i in 0..plan.len() {
                     let door_i = plan[i..i + 1].parse::<usize>().unwrap();
-                    let root_i = uf.find(i);
+                    let base_i = k * results[0].len();
+                    let root_i = uf.find(base_i + i);
                     if root_to_index.contains_key(&root_i) {
                         let index_i = root_to_index[&root_i];
-                        let root_ni = uf.find(i + 1);
+                        let root_ni = uf.find(base_i + i + 1);
                         if root_to_index.contains_key(&root_ni) {
                             let index_ni = root_to_index[&root_ni];
                             destination_candidates
@@ -511,11 +788,12 @@ impl RandomWalker {
             for k in 0..plans.len() {
                 for i in 0..plans[k].len() {
                     let door_i = plans[k][i..i + 1].parse::<usize>().unwrap();
-                    let root_i = uf.find(i);
+                    let base_i = k * results[0].len();
+                    let root_i = uf.find(base_i + i);
                     if root_to_index.contains_key(&root_i) {
                         continue;
                     }
-                    let root_ni = uf.find(i + 1);
+                    let root_ni = uf.find(base_i + i + 1);
                     if !root_to_index.contains_key(&root_ni) {
                         continue;
                     }
@@ -562,7 +840,6 @@ impl RandomWalker {
                         )
                         .into());
                     }
-                    remaining_connections[from_room][from_door] = !0;
                     for to_door in 0..6 {
                         if remaining_connections[to_room][to_door] == from_room {
                             connections.push(GuessRequestConnection {
@@ -586,6 +863,7 @@ impl RandomWalker {
                             .into());
                         }
                     }
+                    remaining_connections[from_room][from_door] = !0;
                 }
             }
         }
