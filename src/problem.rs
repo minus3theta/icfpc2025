@@ -123,16 +123,44 @@ impl Problem {
             // 乱数付きで n 倍にする
             starting_room += random.random_range(0..ploidy) * size;
             connections = itertools::repeat_n(connections, ploidy)
-                .flat_map(|v| {
+                .enumerate()
+                .flat_map(|(i, v)| {
                     v.into_iter()
                         .map(|v| {
                             v.into_iter()
-                                .map(|v| Some(v.unwrap() + random.random_range(0..ploidy) * size))
+                                .map(|v| Some(v.unwrap() + i * size))
                                 .collect::<Vec<Option<usize>>>()
                         })
                         .collect::<Vec<_>>()
                 })
                 .collect();
+
+            // ランダムに ploidy 間で接続を入れ替える
+            for from_room in 0..size {
+                for from_door in 0..DOOR_COUNT {
+                    let to_room = connections[from_room][from_door].unwrap();
+                    if to_room % size < from_room % size {
+                        continue;
+                    }
+                    for to_door in 0..DOOR_COUNT {
+                        if from_room == to_room && from_door <= to_door {
+                            continue;
+                        }
+                        if connections[to_room][to_door].unwrap() == from_room {
+                            let delta = random.random_range(0..ploidy) * size;
+                            for i in 0..ploidy {
+                                connections[from_room + i * size][from_door] = connections
+                                    [from_room + i * size][from_door]
+                                    .map(|v| (v + delta) % (size * ploidy));
+                                connections[to_room + i * size][to_door] = connections
+                                    [to_room + i * size][to_door]
+                                    .map(|v| (v + size * ploidy - delta) % (size * ploidy));
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         Self {
