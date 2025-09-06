@@ -3,7 +3,7 @@ use crate::types::*;
 pub type Error = Box<dyn std::error::Error>;
 
 pub trait Requester {
-    fn select(&self, problem_name: String) -> Result<SelectResponse, Error>;
+    fn select(&self, problem_name: String, seed: Option<u64>) -> Result<SelectResponse, Error>;
     fn explore(&self, plans: Vec<String>) -> Result<ExploreResponse, Error>;
     fn guess(&self, map: GuessRequestMap) -> Result<GuessResponse, Error>;
 }
@@ -30,10 +30,11 @@ impl HttpRequester {
 }
 
 impl Requester for HttpRequester {
-    fn select(&self, problem_name: String) -> Result<SelectResponse, Error> {
+    fn select(&self, problem_name: String, seed: Option<u64>) -> Result<SelectResponse, Error> {
         let select_req = SelectRequest {
             id: self.id.clone(),
             problem_name,
+            seed,
         };
         let response = self
             .client

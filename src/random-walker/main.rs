@@ -25,7 +25,7 @@ impl<R: Requester> RandomWalker<R> {
         let definition = definitions.get(&problem).ok_or("Invalid problem name")?;
         let room_count = definition.size;
 
-        let select_resp = requester.select(problem.clone())?;
+        let select_resp = requester.select(problem.clone(), None)?;
         println!("Selected problem: {:?}", select_resp);
 
         Ok(RandomWalker {

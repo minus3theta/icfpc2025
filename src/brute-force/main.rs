@@ -16,7 +16,7 @@ struct BruteForce<R> {
 
 impl<R: Requester> BruteForce<R> {
     fn new(problem: String, requester: R) -> Result<Self, Box<dyn std::error::Error>> {
-        let select_resp = requester.select(problem.clone())?;
+        let select_resp = requester.select(problem.clone(), None)?;
         println!("Selected problem: {:?}", select_resp);
 
         let definitions = ProblemDefinitions::new();

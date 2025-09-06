@@ -5,6 +5,8 @@ pub struct SelectRequest {
     pub id: String,
     #[serde(rename = "problemName")]
     pub problem_name: String,
+    // only for mock-server
+    pub seed: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
