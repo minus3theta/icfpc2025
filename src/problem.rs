@@ -11,7 +11,7 @@ pub struct Problem {
 const DOOR_COUNT: usize = 6;
 
 impl Problem {
-    pub fn new(size: usize, max_plan_length: usize, ploidy: usize) -> Self {
+    pub fn new(size: usize, max_plan_length: usize, ploidy: usize, seed: Option<u64>) -> Self {
         let size = size / ploidy;
         // 各部屋は 6　つの扉を持つ
         let mut remain_count = vec![DOOR_COUNT; size];
@@ -23,7 +23,10 @@ impl Problem {
         }
         let mut connected = HashSet::new();
 
-        let mut random = rand::rng();
+        let mut random: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(
+            seed.unwrap_or_else(|| rand::rng().random_range(0..u64::MAX)),
+        );
+
         // 初期位置をランダムに選択する
         let mut starting_room = random.random_range(0..size);
         connected.insert(starting_room);

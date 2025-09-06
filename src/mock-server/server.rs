@@ -32,6 +32,7 @@ impl Server {
             definition.size,
             definition.max_plan_length,
             definition.ploidy,
+            req.seed,
         );
         info!("Problem generated:\n{}", problem.pretty_print());
 
