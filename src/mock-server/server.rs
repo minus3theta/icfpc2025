@@ -2,33 +2,25 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::RwLock;
 
-use std::fs::File;
-use std::io::BufReader;
-
 use itertools::Itertools;
 
 use log::info;
 
 use crate::problem::Problem;
 
+use icfpc2025::problem_definition::ProblemDefinitions;
 use icfpc2025::types::{self, *};
 pub use types::{ExploreRequest, GuessRequest, SelectRequest};
 
 pub struct Server {
-    definitions: HashMap<String, ProblemDefinition>,
+    definitions: ProblemDefinitions,
     problems: RwLock<HashMap<String, Problem>>,
 }
 
 impl Server {
     pub fn new() -> Self {
-        let file = File::open("problems.json").unwrap();
-        let reader = BufReader::new(file);
-        let definitions = serde_json::from_reader::<_, Vec<ProblemDefinition>>(reader).unwrap();
         Self {
-            definitions: definitions
-                .into_iter()
-                .map(|d| (d.name.clone(), d))
-                .collect(),
+            definitions: ProblemDefinitions::new(),
             problems: RwLock::new(HashMap::new()),
         }
     }

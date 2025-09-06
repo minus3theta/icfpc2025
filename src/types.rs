@@ -1,12 +1,6 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ProblemDefinition {
-    pub name: String,
-    pub size: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct SelectRequest {
     pub id: String,
     #[serde(rename = "problemName")]
