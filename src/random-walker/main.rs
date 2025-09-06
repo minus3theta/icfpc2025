@@ -695,7 +695,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Determine base URL
     let base_url = if args.len() > 2 {
-        "https://icfpcontest2025.github.io/api".to_string()
+        "https://31pwr5t6ij.execute-api.eu-west-2.amazonaws.com".to_string()
     } else {
         "http://localhost:8080".to_string()
     };
