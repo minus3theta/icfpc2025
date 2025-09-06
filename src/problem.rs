@@ -174,21 +174,42 @@ impl Problem {
     }
 
     pub fn explore(&self, plan: &str) -> Result<Vec<usize>, String> {
+        let mut room_digits = (0..self.connections.len()).collect::<Vec<usize>>();
+
         let mut result = Vec::new();
         let mut current_room = self.starting_room;
 
-        if plan.len() > self.max_plan_length {
-            return Err(format!("Plan length is too long: {}", plan.len()));
-        }
+        result.push(room_digits[current_room]);
 
-        result.push(current_room);
-
+        let mut remaining_plan = self.max_plan_length;
+        let mut writing_mode = false;
         for c in plan.chars() {
-            if !('0'..'6').contains(&c) {
-                return Err(format!("Invalid plan: {}", plan));
+            if c == '[' {
+                writing_mode = true;
+                continue;
             }
-            current_room = self.connections[current_room][(c as u8 - b'0') as usize];
-            result.push(current_room);
+            if c == ']' {
+                writing_mode = false;
+                continue;
+            }
+            if writing_mode {
+                if !('0'..'4').contains(&c) {
+                    return Err(format!("Invalid plan: {}", plan));
+                }
+                room_digits[current_room] = (c as u8 - b'0') as usize;
+                result.push(room_digits[current_room]);
+            } else {
+                if !('0'..'6').contains(&c) {
+                    return Err(format!("Invalid plan: {}", plan));
+                }
+                current_room = self.connections[current_room][(c as u8 - b'0') as usize];
+                result.push(room_digits[current_room]);
+
+                if remaining_plan == 0 {
+                    return Err(format!("Plan length is too long: {}", plan.len()));
+                }
+                remaining_plan -= 1;
+            }
         }
         Ok(result)
     }
