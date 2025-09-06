@@ -1,4 +1,4 @@
-use actix_web::{App, HttpServer, Responder, post, web};
+use actix_web::{App, Error, HttpServer, Responder, error::ErrorBadRequest, post, web};
 use std::env;
 
 mod problem;
@@ -12,29 +12,47 @@ async fn hello() -> impl Responder {
 }
 
 #[post("/select")]
-async fn select_server(req: web::Json<SelectRequest>, server: web::Data<Server>) -> impl Responder {
-    web::Json(server.select(req.into_inner()))
+async fn select_server(
+    req: web::Json<SelectRequest>,
+    server: web::Data<Server>,
+) -> Result<impl Responder, Error> {
+    match server.select(req.into_inner()) {
+        Ok(response) => Ok(web::Json(response)),
+        Err(e) => Err(ErrorBadRequest(e)),
+    }
 }
 
 #[post("/explore")]
 async fn explore_server(
     req: web::Json<ExploreRequest>,
     server: web::Data<Server>,
-) -> impl Responder {
-    web::Json(server.explore(req.into_inner()))
+) -> Result<impl Responder, Error> {
+    match server.explore(req.into_inner()) {
+        Ok(response) => Ok(web::Json(response)),
+        Err(e) => Err(ErrorBadRequest(e)),
+    }
 }
 
 #[post("/guess")]
-async fn guess_server(req: web::Json<GuessRequest>, server: web::Data<Server>) -> impl Responder {
-    web::Json(server.guess(req.into_inner(), false))
+async fn guess_server(
+    req: web::Json<GuessRequest>,
+    server: web::Data<Server>,
+) -> Result<impl Responder, Error> {
+    match server.guess(req.into_inner(), false) {
+        Ok(response) => Ok(web::Json(response)),
+        Err(e) => Err(ErrorBadRequest(e)),
+    }
 }
 
 #[post("/guess-keep")]
 async fn guess_keep_server(
     req: web::Json<GuessRequest>,
     server: web::Data<Server>,
-) -> impl Responder {
-    web::Json(server.guess(req.into_inner(), true))
+) -> Result<impl Responder, Error> {
+    match server.guess(req.into_inner(), true) {
+        Ok(response) => Ok(web::Json(response)),
+        Err(e) => Err(ErrorBadRequest(e)),
+    }
 }
 
 #[actix_web::main]
