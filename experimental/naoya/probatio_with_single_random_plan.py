@@ -16,22 +16,21 @@ def solve(problem_name: str, mock: bool):
         raise ValueError(f"Unknown problem name: {problem_name}")
         # print(f'Problem "{problem_name}" is not supported')
 
-DOORS = 6
-
 def solve_probatio(mock: bool = False):
     server = Server(mock=mock)
     server.select(problem_name="probatio")
 
     N = server.N
+    DOORS = 6
 
     doors_from = [[[] for i in range(N)] for j in range(N)]  # [from][to] = [doors on from_side]
 
     all_doors = [str(ch) for ch in range(DOORS)]
-    # plan = "".join([str(random.randint(0, DOORS-1)) for i in range(PLAN_LENGTH)])
     PLAN_LENGTH = 48  # 上限は18n
 
-    tmp = all_doors * (PLAN_LENGTH // DOORS)
+    # plan = "".join([str(random.randint(0, DOORS-1)) for i in range(PLAN_LENGTH)])
 
+    tmp = all_doors * (PLAN_LENGTH // DOORS)
     random.shuffle(tmp)
     plan = "".join(tmp)
     print("plan:", plan)
@@ -45,12 +44,11 @@ def solve_probatio(mock: bool = False):
     checked = [[False for i in range(DOORS)] for j in range(N)]  # [room][door]
     rest = N * DOORS
 
+    # parse the result
     from_room = starting_room
     for i, (from_door_, to_room_) in enumerate(zip(plan, result[1:])):
         to_room = int(to_room_)
         from_door = int(from_door_)
-        # print(" ", i, ")", from_room, from_door, "->", to_room)
-        # visited[to_room] = True
         if not checked[from_room][from_door]:
             doors_from[from_room][to_room].append(from_door)
             checked[from_room][from_door] = True
@@ -64,6 +62,7 @@ def solve_probatio(mock: bool = False):
         print("Not fulfilled with |plan| =", PLAN_LENGTH)
         sys.exit(0)
 
+    # make graph
     connections = []
     for room in range(N):
         for door in doors_from[room][room]:
@@ -79,6 +78,7 @@ def solve_probatio(mock: bool = False):
                 connections.append((from_room, from_door, to_room, to_door))
                 print(f"connect {from_room}.{from_door} <-> {to_room}.{to_door}")
 
+    # submit our guess
     verdict = server.guess(starting_room, connections)
     print("VERDICT:", verdict)
 
