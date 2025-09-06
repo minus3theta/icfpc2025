@@ -69,6 +69,7 @@ struct ExploreResponse {
 #[derive(Debug, Serialize, Deserialize)]
 struct GuessRequestMap {
     rooms: Vec<i8>,
+    #[serde(rename = "startingRoom")]
     starting_room: usize,
     connections: Vec<GuessRequestConnection>,
 }
@@ -622,6 +623,52 @@ impl RandomWalker {
         println!("graph: {:?}", graph);
         println!("To be connected: {}", to_be_connected);
         println!("{} {}", node_count, results[0].len());
+
+        let mut remaining_connections = graph.clone();
+        let mut connections = Vec::<GuessRequestConnection>::new();
+
+        for from_room in 0..node_count {
+            for from_door in 0..6 {
+                if remaining_connections[from_room][from_door] != !0 {
+                    let to_room = remaining_connections[from_room][from_door];
+                    remaining_connections[from_room][from_door] = !0;
+                    for to_door in 0..6 {
+                        if remaining_connections[to_room][to_door] == from_room {
+                            connections.push(GuessRequestConnection {
+                                from: GuessRequestRoom {
+                                    room: from_room,
+                                    door: from_door,
+                                },
+                                to: GuessRequestRoom {
+                                    room: to_room,
+                                    door: to_door,
+                                },
+                            });
+                            remaining_connections[to_room][to_door] = !0;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        let client = reqwest::blocking::Client::new();
+        let guess_req = GuessRequest {
+            id: self.id.clone(),
+            map: GuessRequestMap {
+                rooms: node_label.clone(),
+                starting_room: start_index,
+                connections: connections,
+            },
+        };
+
+        let response = client
+            .post(&format!("{}/guess", self.base_url))
+            .json(&guess_req)
+            .send()?;
+
+        let response_text = response.text()?;
+        println!("Guess response text: {}", response_text);
 
         return Ok(true);
     }
