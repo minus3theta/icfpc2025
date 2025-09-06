@@ -3,6 +3,7 @@ use std::env;
 
 use rand::seq::SliceRandom;
 
+use icfpc2025::problem_definition::ProblemDefinitions;
 use icfpc2025::request::*;
 use icfpc2025::types::*;
 
@@ -46,7 +47,7 @@ impl UnionFind {
 
 struct RandomWalker<R> {
     problem: String,
-    room_count: u32,
+    room_count: usize,
     requester: R,
 }
 
@@ -236,15 +237,9 @@ impl LabelObservation {
 
 impl<R: Requester> RandomWalker<R> {
     fn new(problem: String, requester: R) -> Result<Self, Box<dyn std::error::Error>> {
-        let room_count = match problem.as_str() {
-            "probatio" => 3,
-            "primus" => 6,
-            "secundus" => 12,
-            "tertius" => 18,
-            "quartus" => 24,
-            "quintus" => 30,
-            _ => return Err("Invalid problem name".into()),
-        };
+        let defitnitions = ProblemDefinitions::new();
+        let definition = defitnitions.get(&problem).ok_or("Invalid problem name")?;
+        let room_count = definition.size;
 
         let select_resp = requester.select(problem.clone())?;
         println!("Selected problem: {:?}", select_resp);
