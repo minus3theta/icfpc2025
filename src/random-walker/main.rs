@@ -840,7 +840,6 @@ impl RandomWalker {
                         )
                         .into());
                     }
-                    remaining_connections[from_room][from_door] = !0;
                     for to_door in 0..6 {
                         if remaining_connections[to_room][to_door] == from_room {
                             connections.push(GuessRequestConnection {
@@ -864,6 +863,7 @@ impl RandomWalker {
                             .into());
                         }
                     }
+                    remaining_connections[from_room][from_door] = !0;
                 }
             }
         }
