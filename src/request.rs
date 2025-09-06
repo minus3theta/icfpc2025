@@ -1,14 +1,20 @@
-mod types;
+use crate::types::*;
 
-pub use types::*;
+pub type Error = Box<dyn std::error::Error>;
 
-pub struct Requester {
+pub trait Requester {
+    fn select(&self, problem_name: String) -> Result<SelectResponse, Error>;
+    fn explore(&self, plans: Vec<String>) -> Result<ExploreResponse, Error>;
+    fn guess(&self, map: GuessRequestMap) -> Result<GuessResponse, Error>;
+}
+
+pub struct HttpRequester {
     id: String,
     base_url: String,
     client: reqwest::blocking::Client,
 }
 
-impl Requester {
+impl HttpRequester {
     pub fn new(id: Option<String>) -> Self {
         let base_url = if id.is_some() {
             "https://31pwr5t6ij.execute-api.eu-west-2.amazonaws.com".to_string()
@@ -21,11 +27,10 @@ impl Requester {
             client: reqwest::blocking::Client::new(),
         }
     }
+}
 
-    pub fn select(
-        &self,
-        problem_name: String,
-    ) -> Result<SelectResponse, Box<dyn std::error::Error>> {
+impl Requester for HttpRequester {
+    fn select(&self, problem_name: String) -> Result<SelectResponse, Error> {
         let select_req = SelectRequest {
             id: self.id.clone(),
             problem_name,
@@ -39,10 +44,7 @@ impl Requester {
         Ok(response.json::<SelectResponse>()?)
     }
 
-    pub fn explore(
-        &self,
-        plans: Vec<String>,
-    ) -> Result<ExploreResponse, Box<dyn std::error::Error>> {
+    fn explore(&self, plans: Vec<String>) -> Result<ExploreResponse, Error> {
         let explore_req = ExploreRequest {
             id: self.id.clone(),
             plans,
@@ -57,7 +59,7 @@ impl Requester {
         Ok(response.json::<ExploreResponse>()?)
     }
 
-    pub fn guess(&self, map: GuessRequestMap) -> Result<GuessResponse, Box<dyn std::error::Error>> {
+    fn guess(&self, map: GuessRequestMap) -> Result<GuessResponse, Error> {
         let guess_req = GuessRequest {
             id: self.id.clone(),
             map,

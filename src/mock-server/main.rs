@@ -1,7 +1,7 @@
 use actix_web::{App, Error, HttpServer, Responder, error::ErrorBadRequest, post, web};
 use std::env;
 
-mod problem;
+use icfpc2025::problem;
 mod server;
 
 use server::Server;
