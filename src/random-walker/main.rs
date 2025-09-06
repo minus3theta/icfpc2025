@@ -631,6 +631,9 @@ impl RandomWalker {
             for from_door in 0..6 {
                 if remaining_connections[from_room][from_door] != !0 {
                     let to_room = remaining_connections[from_room][from_door];
+                    if to_room == !0 {
+                        return Err(format!("Failed to find connection from room {}.{}", from_room, from_door).into());
+                    }
                     remaining_connections[from_room][from_door] = !0;
                     for to_door in 0..6 {
                         if remaining_connections[to_room][to_door] == from_room {
@@ -646,6 +649,9 @@ impl RandomWalker {
                             });
                             remaining_connections[to_room][to_door] = !0;
                             break;
+                        }
+                        if to_door == 5 {
+                            return Err(format!("Failed to find connection from room {}.{} to room {}", from_room, from_door, to_room).into());
                         }
                     }
                 }
