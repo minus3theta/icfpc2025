@@ -5,12 +5,13 @@ use rand::Rng;
 pub struct Problem {
     starting_room: usize,
     connections: Vec<Vec<usize>>,
+    max_plan_length: usize,
 }
 
 const DOOR_COUNT: usize = 6;
 
 impl Problem {
-    pub fn new(size: usize) -> Self {
+    pub fn new(size: usize, max_plan_length: usize) -> Self {
         // 各部屋は 6　つの扉を持つ
         let mut remain_count = vec![DOOR_COUNT; size];
         let mut connections = vec![vec![None; DOOR_COUNT]; size];
@@ -77,10 +78,6 @@ impl Problem {
         for from_room in 0..size {
             for from_door in 0..DOOR_COUNT {
                 if connections[from_room][from_door].is_none() {
-                    remain_count[from_room] -= 1;
-                    connections[from_room][from_door] = Some(usize::MAX);
-                    available_doors -= 1;
-
                     // 接続先を選択する
                     let mut index = random.random_range(0..available_doors);
                     let mut to_room = usize::MAX;
@@ -106,6 +103,12 @@ impl Problem {
 
                     // 接続する
                     connections[from_room][from_door] = Some(to_room);
+                    remain_count[from_room] -= 1;
+                    available_doors -= 1;
+                    if from_room == to_room && from_door == to_door {
+                        // 自己ループでは 1 つだけ減らす
+                        continue;
+                    }
                     connections[to_room][to_door] = Some(from_room);
                     remain_count[to_room] -= 1;
                     available_doors -= 1;
@@ -121,12 +124,17 @@ impl Problem {
                 .into_iter()
                 .map(|v| v.into_iter().map(|v| v.unwrap()).collect())
                 .collect(),
+            max_plan_length,
         }
     }
 
     pub fn explore(&self, plan: &str) -> Result<Vec<usize>, String> {
         let mut result = Vec::new();
         let mut current_room = self.starting_room;
+
+        if plan.len() > self.max_plan_length {
+            return Err(format!("Plan length is too long: {}", plan.len()));
+        }
 
         result.push(current_room);
 
@@ -140,12 +148,60 @@ impl Problem {
         Ok(result)
     }
 
+    fn guess_visit(
+        &self,
+        connections: &Vec<Vec<usize>>,
+        current_room: usize,
+        guessed_room: usize,
+        mapping: &mut Vec<usize>,
+    ) {
+        if current_room >= connections.len() {
+            return;
+        }
+        if mapping[current_room] != usize::MAX {
+            return;
+        }
+        mapping[current_room] = guessed_room;
+        for i in 0..6 {
+            self.guess_visit(
+                connections,
+                connections[current_room][i],
+                self.connections[guessed_room][i],
+                mapping,
+            );
+        }
+    }
+
     pub fn guess(
         &self,
+        rooms: Vec<i8>,
         starting_room: usize,
         connections: Vec<Vec<usize>>,
     ) -> Result<bool, String> {
-        Ok(self.starting_room == starting_room && self.connections == connections)
+        let mut mapping = vec![usize::MAX; rooms.len()];
+
+        self.guess_visit(
+            &connections,
+            starting_room,
+            self.starting_room,
+            &mut mapping,
+        );
+
+        for (i, room) in rooms.iter().enumerate() {
+            if mapping[i] % 4 != *room as usize {
+                return Ok(false);
+            }
+        }
+
+        for (i, connection) in connections.iter().enumerate() {
+            for (j, c) in connection.iter().enumerate() {
+                if mapping[*c] != self.connections[mapping[i]][j] {
+                    return Ok(false);
+                }
+            }
+        }
+
+        Ok(true)
     }
 
     pub fn pretty_print(&self) -> String {

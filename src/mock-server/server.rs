@@ -1,8 +1,5 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::sync::RwLock;
-
-use itertools::Itertools;
 
 use log::info;
 
@@ -31,7 +28,7 @@ impl Server {
             .get(&req.problem_name)
             .ok_or("Problem definition not found")?;
 
-        let problem = Problem::new(definition.size);
+        let problem = Problem::new(definition.size, definition.max_plan_length);
         info!("Problem generated:\n{}", problem.pretty_print());
 
         self.problems
@@ -66,53 +63,28 @@ impl Server {
     }
 
     fn guess_impl(problem: &Problem, req: GuessRequest) -> Result<GuessResponse, String> {
-        let mut positions = Vec::<HashSet<usize>>::new();
-        for _ in 0..4 {
-            positions.push(HashSet::new());
-        }
-        for (i, room) in req.map.rooms.iter().enumerate() {
-            positions[*room as usize].insert(i);
-        }
+        let starting_room = req.map.starting_room;
 
-        // 2 bit の room から実際の room の割り当てを列挙する
-        for perm in positions
-            .iter()
-            .map(|p| p.iter().permutations(p.len()))
-            .multi_cartesian_product()
-        {
-            // 2 bit の room から実際の room の割り当てを作成する
-            let mut mapping = vec![usize::MAX; req.map.rooms.len()];
-            for (i, p) in perm.iter().enumerate() {
-                for (j, q) in p.iter().enumerate() {
-                    mapping[**q] = i + j * 4;
-                }
-            }
-
-            let starting_room = mapping[req.map.starting_room];
-
-            let mut connections = vec![vec![usize::MAX; 6]; req.map.rooms.len()];
-            for connection in req.map.connections.iter() {
-                connections[mapping[connection.from.room]][connection.from.door] =
-                    mapping[connection.to.room];
-                connections[mapping[connection.to.room]][connection.to.door] =
-                    mapping[connection.from.room];
-            }
-
-            let mut print_connections = format!("Starting room: {}", starting_room);
-            for (i, connection) in connections.iter().enumerate() {
-                print_connections += &format!("\n{}:", i);
-                for c in connection.iter() {
-                    print_connections += &format!(" {}", c);
-                }
-            }
-            info!("Attempting to guess:\n{}", print_connections);
-
-            if problem.guess(starting_room, connections)? {
-                return Ok(GuessResponse { correct: true });
-            }
+        let mut connections = vec![vec![usize::MAX; 6]; req.map.rooms.len()];
+        for connection in req.map.connections.iter() {
+            connections[connection.from.room][connection.from.door] = connection.to.room;
+            connections[connection.to.room][connection.to.door] = connection.from.room;
         }
 
-        Ok(GuessResponse { correct: false })
+        let rooms = req.map.rooms;
+
+        let mut print_connections = format!("Starting room: {}", starting_room);
+        for (i, connection) in connections.iter().enumerate() {
+            print_connections += &format!("\n{}.{}:", i, rooms[i]);
+            for c in connection.iter() {
+                print_connections += &format!(" {}", c);
+            }
+        }
+        info!("Attempting to guess:\n{}", print_connections);
+
+        let correct = problem.guess(rooms, starting_room, connections)?;
+
+        Ok(GuessResponse { correct })
     }
 
     pub fn guess(&self, req: GuessRequest, keep_problem: bool) -> Result<GuessResponse, String> {
