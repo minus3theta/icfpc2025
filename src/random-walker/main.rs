@@ -232,6 +232,12 @@ impl<R: Requester> RandomWalker<R> {
 
         let mut to_be_connected = QUERY_NUM * results[0].len() - node_count;
 
+        // 各プランについてスタート地点は同じノード
+        for k in 1..plans.len() {
+            uf.union(0, k * results[0].len());
+            to_be_connected -= 1;
+        }
+
         for (k, plan) in plans.iter().enumerate() {
             if results.len() <= k {
                 break;
@@ -580,7 +586,7 @@ impl<R: Requester> RandomWalker<R> {
                         let candidates = &destination_candidates[&(label_i, door_i)];
                         if candidates.len() == num_rooms[label_i as usize] {
                             for candidate in candidates {
-                                if candidate.0 == root_to_index[&root_ni] {
+                                if candidate.1 != root_i && candidate.0 == root_to_index[&root_ni] {
                                     uf.size[candidate.1] += uf.size[root_i];
                                     uf.parent[root_i] = candidate.1;
                                     updated = true;
