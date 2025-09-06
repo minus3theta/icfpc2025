@@ -27,7 +27,7 @@ impl BruteForce {
 
         // 乱数の引きによってはかぶることがあるので大きい問題では suffix_count を大きくする
         let suffix_length = 18;
-        let suffix_count = 1;
+        let suffix_count = 2;
 
         let mut suffixes = Vec::new();
         let mut rng = rand::rng();
@@ -44,7 +44,7 @@ impl BruteForce {
         // suffix 部分の result（部屋ハッシュみたいなもの） -> 部屋番号
         let mut room_ids = HashMap::<Vec<Vec<i8>>, usize>::new();
         // 部屋番号 -> 部屋に到達できる経路
-        let mut room_paths = HashMap::from([(0, "".to_string())]);
+        let mut room_paths = vec!["".to_string()];
         // 部屋番号 -> 部屋の数字
         let mut room_digits = vec![];
 
@@ -70,16 +70,13 @@ impl BruteForce {
             let plans = requests.iter().cartesian_product(suffixes.iter()).map(|(request, suffix)| match request {
                 // 最初の部屋だけは特別扱い
                 None => "".to_string(),
-                Some((room_id, door_id)) => room_paths[&room_id].clone() + &door_id.to_string(),
+                Some((room_id, door_id)) => room_paths[*room_id].clone() + &door_id.to_string(),
             } + suffix).collect::<Vec<String>>();
 
             let results = self.explore(&plans)?;
 
             for (request, chunk) in requests.into_iter().zip_eq(results.chunks(suffixes.len())) {
-                let res = chunk
-                    .into_iter()
-                    .map(|r| r.clone())
-                    .collect::<Vec<Vec<i8>>>();
+                let res = chunk.iter().cloned().collect::<Vec<Vec<i8>>>();
                 // 部屋の数字
                 let room_digit = res[0][res[0].len() - suffix_length - 1];
                 // 部屋ハッシュのようなもの
@@ -93,7 +90,10 @@ impl BruteForce {
                         println!(
                             "Found new room: {:?}.{:?} at {:?}",
                             room_digit,
-                            suffix_data,
+                            suffix_data
+                                .iter()
+                                .map(|d| d.iter().map(|d| d.to_string()).join(""))
+                                .collect::<Vec<String>>(),
                             room_paths.iter().last().unwrap()
                         );
                         room_ids.insert(suffix_data, 0);
@@ -102,14 +102,14 @@ impl BruteForce {
                     Some((room_id, door_id)) => {
                         let current_len = room_ids.len();
                         let to_room_id = room_ids.entry(suffix_data.clone()).or_insert_with(|| {
-                            room_paths.insert(
-                                current_len,
-                                room_paths[&room_id].clone() + &door_id.to_string(),
-                            );
+                            room_paths.push(room_paths[room_id].clone() + &door_id.to_string());
                             println!(
                                 "Found new room: {:?}.{:?} at {:?}",
                                 room_digit,
-                                suffix_data,
+                                suffix_data
+                                    .iter()
+                                    .map(|d| d.iter().map(|d| d.to_string()).join(""))
+                                    .collect::<Vec<String>>(),
                                 room_paths.iter().last().unwrap()
                             );
                             room_digits.push(room_digit);
@@ -132,9 +132,15 @@ impl BruteForce {
     }
 
     fn explore(&mut self, plans: &[String]) -> Result<Vec<Vec<i8>>, Box<dyn std::error::Error>> {
-        println!("Exploring: {:?}", plans);
         let explore_resp = self.requester.explore(plans.to_vec())?;
-        println!("Explored: {:?}", explore_resp);
+        println!(
+            "Explored: {:?}",
+            plans
+                .iter()
+                .zip_eq(explore_resp.results.iter())
+                .map(|(p, r)| (p, r.iter().map(|d| d.to_string()).join("")))
+                .collect::<Vec<(&String, String)>>()
+        );
 
         // Store the result
         Ok(explore_resp.results)
@@ -145,8 +151,13 @@ impl BruteForce {
         room_digits: Vec<i8>,
         remaining_connections: Vec<Vec<usize>>,
     ) -> Result<bool, Box<dyn std::error::Error>> {
-        println!("Room digits: {:?}", room_digits);
-        println!("Remaining connections: {:?}", remaining_connections);
+        for (i, (d, c)) in room_digits
+            .iter()
+            .zip_eq(remaining_connections.iter())
+            .enumerate()
+        {
+            println!("{:?}: {:?} {:?}", i, d, c);
+        }
 
         let mut connections = Vec::<GuessRequestConnection>::new();
         let mut remaining_connections = remaining_connections;
@@ -162,7 +173,6 @@ impl BruteForce {
                         )
                         .into());
                     }
-                    remaining_connections[from_room][from_door] = !0;
                     for to_door in 0..6 {
                         if remaining_connections[to_room][to_door] == from_room {
                             connections.push(GuessRequestConnection {
@@ -186,6 +196,7 @@ impl BruteForce {
                             .into());
                         }
                     }
+                    remaining_connections[from_room][from_door] = !0;
                 }
             }
         }
