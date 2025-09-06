@@ -5,11 +5,13 @@ use rand::Rng;
 
 use itertools::Itertools;
 
+use icfpc2025::problem_definition::{ProblemDefinition, ProblemDefinitions};
 use icfpc2025::request::*;
 use icfpc2025::types::*;
 
 struct BruteForce<R> {
     requester: R,
+    definition: ProblemDefinition,
 }
 
 impl<R: Requester> BruteForce<R> {
@@ -17,15 +19,21 @@ impl<R: Requester> BruteForce<R> {
         let select_resp = requester.select(problem.clone())?;
         println!("Selected problem: {:?}", select_resp);
 
-        Ok(BruteForce { requester })
+        let definitions = ProblemDefinitions::new();
+        let definition = definitions.get(&problem).ok_or("Invalid problem name")?;
+
+        Ok(BruteForce {
+            requester,
+            definition: definition.clone(),
+        })
     }
 
     fn solve(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let door_count = 6;
 
         // 乱数の引きによってはかぶることがあるので大きい問題では suffix_count を大きくする
-        let suffix_length = 18;
-        let suffix_count = 2;
+        let suffix_length = self.definition.max_plan_length / 2;
+        let suffix_count = 1;
 
         let mut suffixes = Vec::new();
         let mut rng = rand::rng();
@@ -36,6 +44,12 @@ impl<R: Requester> BruteForce<R> {
             }
             suffixes.push(suffix);
         }
+        let prefix = if self.definition.label_rewritable {
+            format!("[{}]", rng.random_range(0..4))
+        } else {
+            "".to_string()
+        };
+        println!("Prefix: {:?}", prefix);
         let suffixes = suffixes;
         println!("Suffixes: {:?}", suffixes);
 
@@ -67,8 +81,8 @@ impl<R: Requester> BruteForce<R> {
             // 最後に suffix を追加して部屋ハッシュのようなものを得られるようにする
             let plans = requests.iter().cartesian_product(suffixes.iter()).map(|(request, suffix)| match request {
                 // 最初の部屋だけは特別扱い
-                None => "".to_string(),
-                Some((room_id, door_id)) => room_paths[*room_id].clone() + &door_id.to_string(),
+                None => prefix.clone(),
+                Some((room_id, door_id)) => prefix.clone() + &room_paths[*room_id].clone() + &door_id.to_string(),
             } + suffix).collect::<Vec<String>>();
 
             let results = self.explore(&plans)?;
@@ -79,11 +93,15 @@ impl<R: Requester> BruteForce<R> {
                 let room_digit = res[0][res[0].len() - suffix_length - 1];
                 // 部屋ハッシュのようなもの
                 let suffix_data = res
-                    .into_iter()
+                    .iter()
                     .map(|r| r[r.len() - suffix_length - 1..r.len()].to_vec())
                     .collect::<Vec<Vec<i8>>>();
                 match request {
                     None => {
+                        if self.definition.label_rewritable && room_digit == res[0][0] {
+                            return Err("Bad luck!".into());
+                        }
+                        let room_digit = res[0][0];
                         // 最初の部屋だけは特別扱い
                         println!(
                             "Found new room: {:?}.{:?} at {:?}",
