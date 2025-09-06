@@ -121,9 +121,9 @@ impl Problem {
 
         if ploidy > 1 {
             // 乱数付きで n 倍にする
-            starting_room = starting_room + random.random_range(0..ploidy) * size;
+            starting_room += random.random_range(0..ploidy) * size;
             connections = itertools::repeat_n(connections, ploidy)
-                .map(|v| {
+                .flat_map(|v| {
                     v.into_iter()
                         .map(|v| {
                             v.into_iter()
@@ -132,7 +132,6 @@ impl Problem {
                         })
                         .collect::<Vec<_>>()
                 })
-                .flatten()
                 .collect();
         }
 
