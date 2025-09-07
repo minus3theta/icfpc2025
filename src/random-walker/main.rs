@@ -188,15 +188,13 @@ impl<R: Requester> RandomWalker<R> {
 
         let whole_size = QUERY_NUM * results[0].len();
         let mut uf = UnionFind::new(whole_size);
-        let mut is_different_group = vec![vec![false; whole_size]; whole_size];
 
         for i in 0..whole_size {
             let label_i = results[i / results[0].len()][i % results[0].len()];
             for j in i + 1..whole_size {
                 let label_j = results[j / results[0].len()][j % results[0].len()];
                 if label_i != label_j {
-                    is_different_group[i][j] = true;
-                    is_different_group[j][i] = true;
+                    uf.set_different_group(i, j);
                 }
             }
         }
@@ -229,14 +227,9 @@ impl<R: Requester> RandomWalker<R> {
             }
             println!("================");
             update_label_observation(results, &mut uf, label_observation);
-            check_different_group(results, &mut uf, &mut is_different_group);
+            check_different_group(results, &mut uf);
 
-            let merged_count = merge_group_by_different_group(
-                results,
-                &mut uf,
-                &is_different_group,
-                label_observation,
-            );
+            let merged_count = merge_group_by_different_group(results, &mut uf, label_observation);
             to_be_connected -= merged_count;
 
             if (end && merged_count == 0) || to_be_connected == 0 {
@@ -545,15 +538,10 @@ fn update_label_observation(
     }
 }
 
-fn check_different_group(
-    results: &[Vec<i8>],
-    uf: &mut UnionFind,
-    is_different_group: &mut [Vec<bool>],
-) {
+fn check_different_group(results: &[Vec<i8>], uf: &mut UnionFind) {
     fn check_different_group_impl(
         results: &[Vec<i8>],
         uf: &mut UnionFind,
-        is_different_group: &[Vec<bool>],
         idx0: usize,
         idx1: usize,
         depth: usize,
@@ -571,7 +559,7 @@ fn check_different_group(
             if pos2_1 == !0 {
                 continue;
             }
-            if is_different_group[pos1_1][pos2_1] {
+            if uf.is_different_group(pos1_1, pos2_1) {
                 return true;
             }
             let label1_1 = results[pos1_1 / length][pos1_1 % length] as usize;
@@ -579,14 +567,7 @@ fn check_different_group(
             if label1_1 != label2_1 {
                 return true;
             }
-            if check_different_group_impl(
-                results,
-                uf,
-                is_different_group,
-                pos1_1,
-                pos2_1,
-                depth - 1,
-            ) {
+            if check_different_group_impl(results, uf, pos1_1, pos2_1, depth - 1) {
                 return true;
             }
         }
@@ -601,15 +582,14 @@ fn check_different_group(
                 continue;
             }
             for j in i + 1..whole_size {
-                if is_different_group[i][j] {
-                    continue;
-                }
                 if uf.find(j) != j {
                     continue;
                 }
-                if check_different_group_impl(results, uf, is_different_group, i, j, 3) {
-                    is_different_group[i][j] = true;
-                    is_different_group[j][i] = true;
+                if uf.is_different_group(i, j) {
+                    continue;
+                }
+                if check_different_group_impl(results, uf, i, j, 3) {
+                    uf.set_different_group(i, j);
                     updated = true;
                 }
             }
@@ -623,7 +603,6 @@ fn check_different_group(
 fn merge_group_by_different_group(
     results: &[Vec<i8>],
     uf: &mut UnionFind,
-    is_different_group: &[Vec<bool>],
     label_observation: &LabelObservation,
 ) -> usize {
     let mut merged_count = 0;
@@ -673,7 +652,7 @@ fn merge_group_by_different_group(
             if door_group.is_empty() {
                 continue;
             }
-            for (i, diffs) in is_different_group.iter().enumerate() {
+            for i in 0..uf.whole_size() {
                 if uf.find(i) != i {
                     continue;
                 }
@@ -683,7 +662,7 @@ fn merge_group_by_different_group(
                         target = !0;
                         break;
                     }
-                    if !diffs[*j] {
+                    if !uf.is_different_group(i, *j) {
                         if target == !0 {
                             target = *j;
                         } else {
@@ -721,7 +700,7 @@ fn merge_group_by_different_group(
         if leaders[label].len() < num_rooms[label] {
             let mut ok = true;
             for i in leaders[label].iter() {
-                if !is_different_group[r][*i] {
+                if !uf.is_different_group(r, *i) {
                     ok = false;
                     break;
                 }
@@ -743,7 +722,7 @@ fn merge_group_by_different_group(
         for j in remains[i].iter() {
             let mut target = !0;
             for l in leaders[i].iter() {
-                if !is_different_group[*j][*l] {
+                if !uf.is_different_group(*j, *l) {
                     if target == !0 {
                         target = *l;
                     } else {
