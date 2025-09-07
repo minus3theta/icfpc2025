@@ -167,10 +167,11 @@ impl LabelObservationNode {
 
 pub struct LabelObservation {
     nodes: [LabelObservationNode; 4],
+    room_count: [usize; 4],
 }
 
 impl LabelObservation {
-    pub fn new() -> Self {
+    pub fn new(node_count: usize) -> Self {
         Self {
             nodes: [
                 LabelObservationNode::new(),
@@ -178,7 +179,17 @@ impl LabelObservation {
                 LabelObservationNode::new(),
                 LabelObservationNode::new(),
             ],
+            room_count: [
+                node_count.div_ceil(4),
+                (node_count + 2) / 4,
+                (node_count + 1) / 4,
+                node_count / 4,
+            ],
         }
+    }
+
+    pub fn get_room_count(&self) -> &[usize; 4] {
+        &self.room_count
     }
 
     pub fn get_size(&self, label: usize) -> usize {
@@ -220,7 +231,8 @@ impl LabelObservation {
 
     pub fn is_unique_1step(&self, label: usize, door: usize, destination_label: usize) -> bool {
         // このドアを選んだ場合の行先が、このラベルに対応する部屋の中で最も多くの行先を持つドアであり、かつその行先が一意かどうかをチェック
-        self.nodes[label].is_max_selection(door)
+        self.room_count[label] == self.get_size(label)
+            && self.nodes[label].is_max_selection(door)
             && self.nodes[label]
                 .get_child(door, destination_label)
                 .is_some()
@@ -239,6 +251,9 @@ impl LabelObservation {
         destination_label: usize,
     ) -> bool {
         // このドアを選んだ場合の行先が、このラベルに対応する部屋の中で最も多くの行先を持つドアであり、かつその行先が一意かどうかをチェック
+        if self.room_count[label0] != self.get_size(label0) {
+            return false;
+        }
         if !self.nodes[label0].is_max_selection(door0) {
             return false;
         }
@@ -265,6 +280,9 @@ impl LabelObservation {
         destination_label: usize,
     ) -> bool {
         // このドアを選んだ場合の行先が、このラベルに対応する部屋の中で最も多くの行先を持つドアであり、かつその行先が一意かどうかをチェック
+        if self.room_count[label[0]] != self.get_size(label[0]) {
+            return false;
+        }
         if !self.nodes[label[0]].is_max_selection(door[0]) {
             return false;
         }

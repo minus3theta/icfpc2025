@@ -11,7 +11,7 @@ use icfpc2025::types::*;
 
 use utils::{LabelObservation, UnionFind};
 
-const QUERY_NUM: usize = 1;
+const QUERY_NUM: usize = 2;
 
 struct RandomWalker<R> {
     definition: ProblemDefinition,
@@ -100,7 +100,7 @@ impl<R: Requester> RandomWalker<R> {
     ) -> Result<LabelObservation, Box<dyn std::error::Error>> {
         println!("\n=== Analysis of Exploration Results ===");
 
-        let mut label_observation = LabelObservation::new();
+        let mut label_observation = LabelObservation::new(self.definition.size);
 
         // 各探索結果を分析
         for (i, result) in results.iter().enumerate() {
@@ -147,10 +147,6 @@ impl<R: Requester> RandomWalker<R> {
             println!("Label {} observation: {}", i, label_observation.get_size(i));
         }
 
-        if label_observation.get_sum_size() != self.definition.size {
-            return Err("Label observation does not match the size of the problem".into());
-        }
-
         // is_unique である行動を出力する
         let unique_paths = label_observation.get_unique_paths();
         for (path, label) in unique_paths {
@@ -188,21 +184,6 @@ impl<R: Requester> RandomWalker<R> {
         results: &[Vec<i8>],
         label_observation: &mut LabelObservation,
     ) -> Result<bool, Box<dyn std::error::Error>> {
-        let mut num_rooms = [0; 4];
-
-        for (i, num_room) in num_rooms.iter_mut().enumerate() {
-            *num_room = label_observation.get_size(i);
-        }
-
-        let sum_num_rooms = label_observation.get_sum_size();
-
-        if sum_num_rooms != node_count {
-            println!(
-                "Total room types ({}) does not match node count ({})",
-                sum_num_rooms, node_count
-            );
-            return Ok(false);
-        }
         println!("\n=== Analyzing Room Types by Label ===");
 
         let whole_size = QUERY_NUM * results[0].len();
@@ -250,71 +231,18 @@ impl<R: Requester> RandomWalker<R> {
             update_label_observation(results, &mut uf, label_observation);
             check_different_group(results, &mut uf, &mut is_different_group);
 
-            // 残っているグループをサイズが大きい順に並べる
-            let mut roots = Vec::new();
-            for i in 0..uf.whole_size() {
-                if uf.find(i) == i {
-                    roots.push(i);
-                }
-            }
+            let merged_count = merge_group_by_different_group(
+                results,
+                &mut uf,
+                &is_different_group,
+                label_observation,
+            );
+            to_be_connected -= merged_count;
 
-            // サイズが大きい順にソート
-            roots.sort_by_key(|&i| uf.get_size(i));
-            roots.reverse();
-
-            let mut leaders = vec![Vec::<usize>::new(); 4];
-            let mut remains = vec![Vec::<usize>::new(); 4];
-
-            for r in roots {
-                let label = results[r / results[0].len()][r % results[0].len()] as usize;
-                if leaders[label].len() < num_rooms[label] {
-                    let mut ok = true;
-                    for i in leaders[label].iter() {
-                        if !is_different_group[r][*i] {
-                            ok = false;
-                            break;
-                        }
-                    }
-                    if ok {
-                        leaders[label].push(r);
-                    } else {
-                        remains[label].push(r);
-                    }
-                } else {
-                    remains[label].push(r);
-                }
-            }
-
-            let mut updated = false;
-
-            for i in 0..4 {
-                if leaders[i].len() < num_rooms[i] {
-                    continue;
-                }
-                for j in remains[i].iter() {
-                    let mut target = !0;
-                    for l in leaders[i].iter() {
-                        if !is_different_group[*j][*l] {
-                            if target == !0 {
-                                target = *l;
-                            } else {
-                                target = !0;
-                                break;
-                            }
-                        }
-                    }
-                    if target != !0 {
-                        println!("Group Union: {} {}", *j, target);
-                        to_be_connected -= uf.union(*j, target);
-                        end = false;
-                        updated = true;
-                    }
-                }
-            }
-            if end || to_be_connected == 0 {
+            if (end && merged_count == 0) || to_be_connected == 0 {
                 break;
             }
-            if updated {
+            if merged_count != 0 {
                 update_label_observation(results, &mut uf, label_observation);
             }
         }
@@ -690,6 +618,147 @@ fn check_different_group(
             break;
         }
     }
+}
+
+fn merge_group_by_different_group(
+    results: &[Vec<i8>],
+    uf: &mut UnionFind,
+    is_different_group: &[Vec<bool>],
+    label_observation: &LabelObservation,
+) -> usize {
+    let mut merged_count = 0;
+
+    let unique_paths = label_observation.get_unique_paths();
+    let length = results[0].len();
+    let mut div_groups = vec![vec![Vec::<usize>::new(); 6]; 4];
+    for (actions, label) in unique_paths {
+        for (k1, result1) in results.iter().enumerate() {
+            for (i1, r1) in result1.iter().enumerate() {
+                if uf.find(k1 * length + i1) != k1 * length + i1 {
+                    continue;
+                }
+                if actions[0].label != *r1 as usize {
+                    continue;
+                }
+                let path1 = uf.get_path(k1 * length + i1, &actions);
+                let mut ok = true;
+                for j in 0..path1.len() - 1 {
+                    if path1[j] == !0 {
+                        ok = false;
+                        break;
+                    }
+                    if results[path1[j] / length][path1[j] % length] as usize
+                        != actions[j + 1].label
+                    {
+                        ok = false;
+                        break;
+                    }
+                }
+                let last_path1 = path1.last().unwrap();
+                if *last_path1 == !0
+                    || results[*last_path1 / length][*last_path1 % length] as usize != label
+                {
+                    ok = false;
+                }
+                if !ok {
+                    continue;
+                }
+                div_groups[actions[0].label][actions[0].door].push(k1 * length + i1);
+            }
+        }
+    }
+
+    for label_group in div_groups.iter() {
+        for door_group in label_group.iter() {
+            if door_group.is_empty() {
+                continue;
+            }
+            for (i, diffs) in is_different_group.iter().enumerate() {
+                if uf.find(i) != i {
+                    continue;
+                }
+                let mut target = !0;
+                for j in door_group.iter() {
+                    if uf.find(i) == uf.find(*j) {
+                        target = !0;
+                        break;
+                    }
+                    if !diffs[*j] {
+                        if target == !0 {
+                            target = *j;
+                        } else {
+                            target = !0;
+                            break;
+                        }
+                    }
+                }
+                if target != !0 {
+                    println!("Group Union: {} {}", i, target);
+                    merged_count += uf.union(i, target);
+                }
+            }
+        }
+    }
+
+    // 残っているグループをサイズが大きい順に並べる
+    let mut roots = Vec::new();
+    for i in 0..uf.whole_size() {
+        if uf.find(i) == i {
+            roots.push(i);
+        }
+    }
+
+    // サイズが大きい順にソート
+    roots.sort_by_key(|&i| uf.get_size(i));
+    roots.reverse();
+
+    let mut leaders = vec![Vec::<usize>::new(); 4];
+    let mut remains = vec![Vec::<usize>::new(); 4];
+    let num_rooms = label_observation.get_room_count();
+
+    for r in roots {
+        let label = results[r / results[0].len()][r % results[0].len()] as usize;
+        if leaders[label].len() < num_rooms[label] {
+            let mut ok = true;
+            for i in leaders[label].iter() {
+                if !is_different_group[r][*i] {
+                    ok = false;
+                    break;
+                }
+            }
+            if ok {
+                leaders[label].push(r);
+            } else {
+                remains[label].push(r);
+            }
+        } else {
+            remains[label].push(r);
+        }
+    }
+
+    for i in 0..4 {
+        if leaders[i].len() < num_rooms[i] {
+            continue;
+        }
+        for j in remains[i].iter() {
+            let mut target = !0;
+            for l in leaders[i].iter() {
+                if !is_different_group[*j][*l] {
+                    if target == !0 {
+                        target = *l;
+                    } else {
+                        target = !0;
+                        break;
+                    }
+                }
+            }
+            if target != !0 {
+                println!("Group Union: {} {}", *j, target);
+                merged_count += uf.union(*j, target);
+            }
+        }
+    }
+    merged_count
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
