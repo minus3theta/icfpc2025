@@ -6,6 +6,7 @@ pub struct SelectRequest {
     #[serde(rename = "problemName")]
     pub problem_name: String,
     // only for mock-server
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<u64>,
 }
 
