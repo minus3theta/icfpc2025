@@ -367,6 +367,10 @@ impl<R: Requester> RandomWalker<R> {
         println!("To be connected: {}", to_be_connected);
         println!("{} {}", node_count, results[0].len());
 
+        if graph.iter().any(|v| v.iter().any(|v| v == &!0)) {
+            return Err("Graph is invalid".into());
+        }
+
         return Ok((node_label, start_index, graph));
     }
 
