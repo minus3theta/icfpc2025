@@ -15,6 +15,8 @@ use utils::{LabelObservation, UnionFind};
 
 const QUERY_NUM: usize = 2;
 
+type Graph = (Vec<i8>, usize, Vec<Vec<usize>>);
+
 struct RandomWalker<R> {
     definition: ProblemDefinition,
     requester: R,
@@ -192,7 +194,7 @@ impl<R: Requester> RandomWalker<R> {
         plans: &[String],
         results: &[Vec<i8>],
         label_observation: &mut LabelObservation,
-    ) -> Result<(Vec<i8>, usize, Vec<Vec<usize>>), Box<dyn std::error::Error>> {
+    ) -> Result<Graph, Box<dyn std::error::Error>> {
         println!("\n=== Analyzing Room Types by Label ===");
 
         let whole_size = QUERY_NUM * results[0].len();
@@ -379,7 +381,7 @@ impl<R: Requester> RandomWalker<R> {
             return Err("Graph is invalid".into());
         }
 
-        return Ok((node_label, start_index, graph));
+        Ok((node_label, start_index, graph))
     }
 
     fn expand_ploidy(
@@ -387,7 +389,7 @@ impl<R: Requester> RandomWalker<R> {
         node_label: Vec<i8>,
         start_index: usize,
         graph: Vec<Vec<usize>>,
-    ) -> Result<(Vec<i8>, usize, Vec<Vec<usize>>), Box<dyn std::error::Error>> {
+    ) -> Result<Graph, Box<dyn std::error::Error>> {
         // 1 倍では何もする必要はない
         if self.definition.ploidy == 1 {
             return Ok((node_label, start_index, graph));
@@ -401,16 +403,16 @@ impl<R: Requester> RandomWalker<R> {
 
         // 各部屋から各部屋への最短経路
         let mut shortest_paths = vec![vec![None; sub_size]; sub_size];
-        for i in 0..sub_size {
-            let mut room_list = vec![(i, "".to_string())];
-            while shortest_paths[i].iter().any(|v| v.is_none()) {
+        for (room_id, shortest_path) in shortest_paths.iter_mut().enumerate() {
+            let mut room_list = vec![(room_id, "".to_string())];
+            while shortest_path.iter().any(|v| v.is_none()) {
                 let last_room_list = room_list;
                 room_list = vec![];
                 for (room, path) in last_room_list {
-                    shortest_paths[i][room].get_or_insert(path.clone());
+                    shortest_path[room].get_or_insert(path.clone());
                     for (door, next_room) in graph[room].iter().enumerate() {
                         let next_path = path.clone() + &door.to_string();
-                        if shortest_paths[i][*next_room].is_none() {
+                        if shortest_path[*next_room].is_none() {
                             room_list.push((*next_room, next_path));
                         }
                     }
@@ -490,7 +492,7 @@ impl<R: Requester> RandomWalker<R> {
                     break;
                 }
                 remaining_length -= next_path.len();
-                current_path += &next_path;
+                current_path += next_path;
                 for door in next_path.chars() {
                     let door = (door as u8 - b'0') as usize;
                     unvisited_doors.remove(&(current_room, door));
