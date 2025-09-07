@@ -186,8 +186,8 @@ impl<R: Requester> BruteForce<R> {
                         for i in 0..self.definition.ploidy {
                             if connections[from_room_group + i][door_id] != !0 {
                                 remaining &= !(1
-                                    << connections[from_room_group + i][door_id]
-                                        % self.definition.ploidy);
+                                    << (connections[from_room_group + i][door_id]
+                                        % self.definition.ploidy));
                             }
                         }
                         if remaining.count_ones() == 1 {
