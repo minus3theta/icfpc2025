@@ -32,7 +32,7 @@ impl<R: Requester> BruteForce<R> {
         let door_count = 6;
 
         // 乱数の引きによってはかぶることがあるので大きい問題では suffix_count を大きくする
-        let suffix_length = self.definition.max_plan_length / 2;
+        let suffix_length = self.definition.max_plan_length - 6;
         let suffix_count = 1;
 
         let mut suffixes = Vec::new();
@@ -53,10 +53,12 @@ impl<R: Requester> BruteForce<R> {
         let suffixes = suffixes;
         println!("Suffixes: {:?}", suffixes);
 
-        // suffix 部分の result（部屋ハッシュみたいなもの） -> 部屋番号
-        let mut room_ids = HashMap::<Vec<Vec<i8>>, usize>::new();
-        // 部屋番号 -> 部屋に到達できる経路
-        let mut room_paths = vec!["".to_string()];
+        let mut get_ploidy_group = None;
+
+        // suffix 部分の result の digit 置換グループ -> (グループ, suffix 部分の result（部屋ハッシュみたいなもの） -> 部屋番号)
+        let mut room_ids = HashMap::<Vec<Vec<i8>>, (usize, HashMap<Vec<Vec<i8>>, usize>)>::new();
+        // [部屋に到達できる経路, 部屋番号]
+        let mut room_paths = vec![("".to_string(), 0)];
         // 部屋番号 -> 部屋の数字
         let mut room_digits = vec![];
 
@@ -82,7 +84,7 @@ impl<R: Requester> BruteForce<R> {
             let plans = requests.iter().cartesian_product(suffixes.iter()).map(|(request, suffix)| match request {
                 // 最初の部屋だけは特別扱い
                 None => prefix.clone(),
-                Some((room_id, door_id)) => prefix.clone() + &room_paths[*room_id].clone() + &door_id.to_string(),
+                Some((unprocessed_room, door_id)) => prefix.clone() + &room_paths[*unprocessed_room].0.clone() + &door_id.to_string(),
             } + suffix).collect::<Vec<String>>();
 
             let results = self.explore(&plans)?;
@@ -102,39 +104,107 @@ impl<R: Requester> BruteForce<R> {
                             return Err("Bad luck!".into());
                         }
                         let room_digit = res[0][0];
+                        let rewrite_digit = res[0][1];
+                        get_ploidy_group = Some(move |result: &Vec<Vec<i8>>| -> Vec<Vec<i8>> {
+                            result
+                                .iter()
+                                .map(|r| {
+                                    r.iter()
+                                        .map(|d| if *d == rewrite_digit { room_digit } else { *d })
+                                        .collect::<Vec<_>>()
+                                })
+                                .collect::<Vec<_>>()
+                        });
                         // 最初の部屋だけは特別扱い
                         println!(
-                            "Found new room: {:?}.{:?} at {:?}",
+                            "Found new room {:?}: {:?}.{:?} at {:?}",
+                            0,
                             room_digit,
                             suffix_data
                                 .iter()
                                 .map(|d| d.iter().map(|d| d.to_string()).join(""))
                                 .collect::<Vec<String>>(),
-                            room_paths.iter().last().unwrap()
+                            room_paths.iter().last().unwrap().0
                         );
-                        room_ids.insert(suffix_data, 0);
-                        room_digits.push(room_digit);
+                        room_ids.insert(
+                            get_ploidy_group.unwrap()(&suffix_data),
+                            (0, HashMap::from([(suffix_data, 0)])),
+                        );
+                        for _ in 0..self.definition.ploidy {
+                            room_digits.push(room_digit);
+                        }
                     }
-                    Some((room_id, door_id)) => {
-                        let current_len = room_ids.len();
-                        let to_room_id = room_ids.entry(suffix_data.clone()).or_insert_with(|| {
-                            room_paths.push(room_paths[room_id].clone() + &door_id.to_string());
+                    Some((unprocessed_room, door_id)) => {
+                        let current_len = room_digits.len();
+                        let entry = room_ids
+                            .entry(get_ploidy_group.unwrap()(&suffix_data))
+                            .or_insert_with(|| {
+                                for _ in 0..self.definition.ploidy {
+                                    room_digits.push(room_digit);
+                                }
+                                (current_len, HashMap::new())
+                            });
+                        let from_room_id = room_paths[unprocessed_room].1;
+                        let new_room_id = entry.0 + entry.1.len();
+                        let to_room_id = *entry.1.entry(suffix_data.clone()).or_insert_with(|| {
+                            let room_path =
+                                room_paths[unprocessed_room].0.clone() + &door_id.to_string();
+                            // 最後の 1 コピーは補完できるので調査する必要がない
+                            if new_room_id % self.definition.ploidy < self.definition.ploidy - 1 {
+                                room_paths.push((room_path.clone(), new_room_id));
+                            }
                             println!(
-                                "Found new room: {:?}.{:?} at {:?}",
+                                "Found new room {:?}: {:?}.{:?} at {:?}",
+                                new_room_id,
                                 room_digit,
                                 suffix_data
                                     .iter()
                                     .map(|d| d.iter().map(|d| d.to_string()).join(""))
                                     .collect::<Vec<String>>(),
-                                room_paths.iter().last().unwrap()
+                                room_path
                             );
-                            room_digits.push(room_digit);
-                            current_len
+                            new_room_id
                         });
-                        if connections.len() <= room_id {
+                        if to_room_id - entry.0 >= self.definition.ploidy {
+                            return Err("Ploidy overflow".into());
+                        }
+                        let from_room_group =
+                            (from_room_id / self.definition.ploidy) * self.definition.ploidy;
+                        let to_room_group =
+                            (to_room_id / self.definition.ploidy) * self.definition.ploidy;
+                        while connections.len() < from_room_group + self.definition.ploidy {
                             connections.push(vec![!0; 6]);
                         }
-                        connections[room_id][door_id] = *to_room_id;
+                        connections[from_room_id][door_id] = to_room_id;
+                        println!(
+                            "Found connection {}.{}->{}",
+                            from_room_id, door_id, to_room_id
+                        );
+
+                        // 未調査のドアを補完
+                        let mut remaining: usize = (1 << self.definition.ploidy) - 1;
+                        for i in 0..self.definition.ploidy {
+                            if connections[from_room_group + i][door_id] != !0 {
+                                remaining &= !(1
+                                    << (connections[from_room_group + i][door_id]
+                                        % self.definition.ploidy));
+                            }
+                        }
+                        if remaining.count_ones() == 1 {
+                            let remaining = remaining.trailing_zeros() as usize;
+                            for i in 0..self.definition.ploidy {
+                                if connections[from_room_group + i][door_id] == !0 {
+                                    println!(
+                                        "Completed connection {}.{}->{}",
+                                        from_room_group + i,
+                                        door_id,
+                                        to_room_group + remaining
+                                    );
+                                    connections[from_room_group + i][door_id] =
+                                        to_room_group + remaining;
+                                }
+                            }
+                        }
                     }
                 };
             }
