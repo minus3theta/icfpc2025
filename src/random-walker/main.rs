@@ -11,7 +11,7 @@ use icfpc2025::types::*;
 
 use utils::{LabelObservation, UnionFind};
 
-const QUERY_NUM: usize = 2;
+const QUERY_NUM: usize = 1;
 
 struct RandomWalker<R> {
     definition: ProblemDefinition,
@@ -237,10 +237,14 @@ impl<R: Requester> RandomWalker<R> {
         }
 
         loop {
+            let mut end = false;
             let merged_count = merge_group_by_unique_paths(results, &mut uf, label_observation);
             to_be_connected -= merged_count;
-            if merged_count == 0 || to_be_connected == 0 {
+            if to_be_connected == 0 {
                 break;
+            }
+            if merged_count == 0 {
+                end = true;
             }
             println!("================");
             update_label_observation(results, &mut uf, label_observation);
@@ -281,6 +285,8 @@ impl<R: Requester> RandomWalker<R> {
                 }
             }
 
+            let mut updated = false;
+
             for i in 0..4 {
                 if leaders[i].len() < num_rooms[i] {
                     continue;
@@ -298,9 +304,18 @@ impl<R: Requester> RandomWalker<R> {
                         }
                     }
                     if target != !0 {
+                        println!("Group Union: {} {}", *j, target);
                         to_be_connected -= uf.union(*j, target);
+                        end = false;
+                        updated = true;
                     }
                 }
+            }
+            if end || to_be_connected == 0 {
+                break;
+            }
+            if updated {
+                update_label_observation(results, &mut uf, label_observation);
             }
         }
 
