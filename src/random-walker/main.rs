@@ -1,8 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::env;
 
 mod utils;
 
+use itertools::Itertools;
+use itertools::repeat_n;
 use rand::seq::SliceRandom;
 
 use icfpc2025::problem_definition::{ProblemDefinition, ProblemDefinitions};
@@ -44,7 +46,10 @@ impl<R: Requester> RandomWalker<R> {
         let mut rng = rand::rng();
 
         println!("Starting random walk for problem: {}", self.definition.name);
-        println!("Room count: {}", self.definition.size);
+        println!(
+            "Room count: {}",
+            self.definition.size / self.definition.ploidy
+        );
 
         // 長さ18*room_countのランダムな探索列を生成
         let mut exploration_plans = Vec::new();
@@ -72,11 +77,13 @@ impl<R: Requester> RandomWalker<R> {
 
                 // 推測を実行
                 let (node_label, start_index, graph) = self.guess(
-                    self.definition.size,
+                    self.definition.size / self.definition.ploidy,
                     &exploration_plans,
                     &results,
                     &mut label_observation,
                 )?;
+                let (node_label, start_index, graph) =
+                    self.expand_ploidy(node_label, start_index, graph)?;
                 let correct = self.submit_result(node_label, start_index, graph)?;
                 if correct {
                     println!("✅ Guess successful!");
@@ -101,7 +108,8 @@ impl<R: Requester> RandomWalker<R> {
     ) -> Result<LabelObservation, Box<dyn std::error::Error>> {
         println!("\n=== Analysis of Exploration Results ===");
 
-        let mut label_observation = LabelObservation::new(self.definition.size);
+        let mut label_observation =
+            LabelObservation::new(self.definition.size / self.definition.ploidy);
 
         // 各探索結果を分析
         for (i, result) in results.iter().enumerate() {
@@ -372,6 +380,187 @@ impl<R: Requester> RandomWalker<R> {
         }
 
         return Ok((node_label, start_index, graph));
+    }
+
+    fn expand_ploidy(
+        &mut self,
+        node_label: Vec<i8>,
+        start_index: usize,
+        graph: Vec<Vec<usize>>,
+    ) -> Result<(Vec<i8>, usize, Vec<Vec<usize>>), Box<dyn std::error::Error>> {
+        // 1 倍では何もする必要はない
+        if self.definition.ploidy == 1 {
+            return Ok((node_label, start_index, graph));
+        }
+
+        if self.definition.ploidy > 2 {
+            return Err("Not implemented yet!".into());
+        }
+
+        let sub_size = self.definition.size / self.definition.ploidy;
+
+        // 各部屋から各部屋への最短経路
+        let mut shortest_paths = vec![vec![None; sub_size]; sub_size];
+        for i in 0..sub_size {
+            let mut room_list = vec![(i, "".to_string())];
+            while shortest_paths[i].iter().any(|v| v.is_none()) {
+                let last_room_list = room_list;
+                room_list = vec![];
+                for (room, path) in last_room_list {
+                    shortest_paths[i][room].get_or_insert(path.clone());
+                    for (door, next_room) in graph[room].iter().enumerate() {
+                        let next_path = path.clone() + &door.to_string();
+                        if shortest_paths[i][*next_room].is_none() {
+                            room_list.push((*next_room, next_path));
+                        }
+                    }
+                }
+            }
+        }
+        let shortest_paths = shortest_paths
+            .into_iter()
+            .map(|v| v.into_iter().map(|v| v.unwrap()).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+
+        println!("Shortest paths: {:?}", shortest_paths);
+
+        // 全部屋を巡回する経路を生成する
+        // 実質的に TSP なので改善の余地がある
+        let mut visited_rooms = HashSet::new();
+        let mut current_room = start_index;
+        let mut paths = vec![];
+        let mut room_order = vec![];
+
+        while visited_rooms.len() < sub_size {
+            visited_rooms.insert(current_room);
+            room_order.push(current_room);
+
+            // 最後は初期位置に戻る
+            if visited_rooms.len() == sub_size {
+                visited_rooms.remove(&start_index);
+            }
+
+            // 最寄りの未探索の部屋を探す
+            let (next_room, next_path) = shortest_paths[current_room]
+                .iter()
+                .enumerate()
+                .filter(|(room, _)| !visited_rooms.contains(room))
+                .min_by_key(|(_, path)| path.len())
+                .unwrap();
+            paths.push(next_path);
+            current_room = next_room;
+
+            if current_room == start_index {
+                break;
+            }
+        }
+
+        assert_eq!(visited_rooms.len() + 1, sub_size);
+        assert_eq!(room_order.len(), sub_size);
+        assert_eq!(paths.len(), sub_size);
+
+        // 巡回しながらラベルを変更するパスを生成する
+        let painting_path = room_order
+            .iter()
+            .zip_eq(paths.iter())
+            .map(|(room, path)| format!("[{}]{}", (node_label[*room] + 1) % 4, path))
+            .join("");
+        // 書き換えはコストを消費しない
+        let painting_length = painting_path.len() - sub_size * 2;
+        println!("Painting path: {}", painting_path);
+
+        let mut unvisited_doors = BTreeSet::new();
+        for room in 0..sub_size {
+            for door in 0..6 {
+                unvisited_doors.insert((room, door));
+            }
+        }
+
+        // 未訪問のドアを訪問する経路を生成する
+        // これも実質的に TSP なので改善の余地がある
+        let mut planned_paths = vec![];
+        while !unvisited_doors.is_empty() {
+            let mut current_room = start_index;
+            let mut current_path = "".to_string();
+            let mut remaining_length = self.definition.max_plan_length - painting_length;
+            while !unvisited_doors.is_empty() {
+                let (target_room, target_door) = *unvisited_doors.first().unwrap();
+                let next_path = &shortest_paths[current_room][target_room];
+                if next_path.len() > remaining_length {
+                    break;
+                }
+                remaining_length -= next_path.len();
+                current_path += &next_path;
+                for door in next_path.chars() {
+                    let door = (door as u8 - b'0') as usize;
+                    unvisited_doors.remove(&(current_room, door));
+                    current_room = graph[current_room][door];
+                }
+                if remaining_length == 0 {
+                    break;
+                }
+                remaining_length -= 1;
+                current_path += &target_door.to_string();
+                unvisited_doors.remove(&(current_room, target_door));
+                current_room = graph[current_room][target_door];
+            }
+            planned_paths.push(painting_path.clone() + &current_path);
+        }
+
+        let planned_paths = planned_paths;
+        println!("Planned paths: {:?}", planned_paths);
+
+        let results = self.explore(&planned_paths)?;
+
+        // ドア間の移動でのコピー間の移動を記録する
+        let mut shifts = vec![vec![None; 6]; sub_size];
+        for (plan, result) in planned_paths.iter().zip_eq(results.iter()) {
+            let mut current_room = start_index;
+            let mut current_shift = (4 + node_label[current_room] - result[painting_length]) % 4;
+
+            let plan = plan[painting_path.len()..].to_string();
+            let result = result[painting_length + 1..].to_vec();
+
+            for (door, next_label) in plan.chars().zip_eq(result.iter()) {
+                let door = (door as u8 - b'0') as usize;
+                let next_room = graph[current_room][door];
+                let next_shift = (4 + node_label[next_room] - next_label) % 4;
+                shifts[current_room][door].get_or_insert((4 + current_shift - next_shift) % 4);
+                current_room = next_room;
+                current_shift = next_shift;
+            }
+        }
+
+        let shifts = shifts
+            .into_iter()
+            .map(|v| v.into_iter().map(|v| v.unwrap()).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+        println!("Shifts: {:?}", shifts);
+
+        // シフトしたグラフを生成する
+        let graph = repeat_n(graph, self.definition.ploidy)
+            .enumerate()
+            .flat_map(|(i, v)| {
+                v.into_iter()
+                    .zip_eq(shifts.iter())
+                    .map(|(v, s)| {
+                        v.into_iter()
+                            .zip_eq(s)
+                            .map(|(v, s)| v + (i + *s as usize) % self.definition.ploidy * sub_size)
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let node_label = repeat_n(node_label, self.definition.ploidy)
+            .flatten()
+            .collect::<Vec<_>>();
+
+        println!("start_index: {}", start_index);
+        println!("node_label: {:?}", node_label);
+        println!("graph: {:?}", graph);
+
+        Ok((node_label, start_index, graph))
     }
 
     fn submit_result(
