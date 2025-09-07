@@ -71,12 +71,13 @@ impl<R: Requester> RandomWalker<R> {
                 let mut label_observation = self.analyze_results(&exploration_plans, &results)?;
 
                 // 推測を実行
-                let correct = self.guess(
+                let (node_label, start_index, graph) = self.guess(
                     self.definition.size,
                     &exploration_plans,
                     &results,
                     &mut label_observation,
                 )?;
+                let correct = self.submit_result(node_label, start_index, graph)?;
                 if correct {
                     println!("✅ Guess successful!");
                 } else {
@@ -183,7 +184,7 @@ impl<R: Requester> RandomWalker<R> {
         plans: &[String],
         results: &[Vec<i8>],
         label_observation: &mut LabelObservation,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
+    ) -> Result<(Vec<i8>, usize, Vec<Vec<usize>>), Box<dyn std::error::Error>> {
         println!("\n=== Analyzing Room Types by Label ===");
 
         let whole_size = QUERY_NUM * results[0].len();
@@ -275,7 +276,7 @@ impl<R: Requester> RandomWalker<R> {
 
         // スタート地点が roots に含まれていなかったら特定失敗
         if !roots.contains(&uf.find(0)) {
-            return Ok(false);
+            return Err("Start index not found".into());
         }
 
         let start_index = root_to_index[&uf.find(0)];
@@ -365,6 +366,17 @@ impl<R: Requester> RandomWalker<R> {
 
         println!("To be connected: {}", to_be_connected);
         println!("{} {}", node_count, results[0].len());
+
+        return Ok((node_label, start_index, graph));
+    }
+
+    fn submit_result(
+        &self,
+        node_label: Vec<i8>,
+        start_index: usize,
+        graph: Vec<Vec<usize>>,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        let node_count = node_label.len();
 
         let mut remaining_connections = graph.clone();
         let mut connections = Vec::<GuessRequestConnection>::new();
