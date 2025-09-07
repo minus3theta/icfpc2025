@@ -574,10 +574,8 @@ impl<R: Requester> RandomWalker<R> {
                 v.into_iter()
                     .map(|v| {
                         let mut remaining: i32 = (1 << self.definition.ploidy) - 1;
-                        for s in v.iter() {
-                            if let Some(s) = s {
-                                remaining &= !(1 << *s as usize);
-                            }
+                        for s in v.iter().flatten() {
+                            remaining &= !(1 << *s as usize);
                         }
                         if remaining.count_ones() > 1 {
                             return Err(format!("Too many unknown shifts: {:?}", v).into());
