@@ -81,6 +81,7 @@ impl<R: Requester> RandomWalker<R> {
                     println!("✅ Guess successful!");
                 } else {
                     println!("❌ Guess failed!");
+                    return Err("Guess failed!".into());
                 }
             }
             Err(e) => {
@@ -144,6 +145,10 @@ impl<R: Requester> RandomWalker<R> {
         println!("Label observation: {}", label_observation.get_sum_size());
         for i in 0..4 {
             println!("Label {} observation: {}", i, label_observation.get_size(i));
+        }
+
+        if label_observation.get_sum_size() != self.definition.size {
+            return Err("Label observation does not match the size of the problem".into());
         }
 
         // is_unique である行動を出力する
