@@ -15,6 +15,7 @@ impl Action {
 pub struct UnionFind {
     parent: Vec<usize>,
     edge: Vec<Vec<usize>>,
+    different_group: Vec<Vec<bool>>,
     size: Vec<usize>,
 }
 
@@ -23,6 +24,7 @@ impl UnionFind {
         Self {
             parent: vec![!0; n],
             edge: vec![vec![!0; 6]; n],
+            different_group: vec![vec![false; n]; n],
             size: vec![1; n],
         }
     }
@@ -33,6 +35,22 @@ impl UnionFind {
 
     pub fn set_edge(&mut self, src: usize, door: usize, dst: usize) {
         self.edge[src][door] = self.find(dst);
+    }
+
+    pub fn is_different_group(&mut self, x: usize, y: usize) -> bool {
+        let root_x = self.find(x);
+        let root_y = self.find(y);
+        if root_x == root_y {
+            return false;
+        }
+        self.different_group[root_x][root_y]
+    }
+
+    pub fn set_different_group(&mut self, x: usize, y: usize) {
+        let root_x = self.find(x);
+        let root_y = self.find(y);
+        self.different_group[root_x][root_y] = true;
+        self.different_group[root_y][root_x] = true;
     }
 
     pub fn find(&mut self, x: usize) -> usize {
@@ -78,6 +96,10 @@ impl UnionFind {
             } else {
                 additional_union.push((self.edge[root_x][i], self.edge[root_y][i]));
             }
+        }
+        for i in 0..self.different_group.len() {
+            self.different_group[root_x][i] |= self.different_group[root_y][i];
+            self.different_group[i][root_x] |= self.different_group[i][root_y];
         }
         for (x, y) in additional_union {
             merged_count += self.union(x, y);
