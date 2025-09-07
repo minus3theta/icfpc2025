@@ -5,7 +5,7 @@ mod utils;
 
 use rand::seq::SliceRandom;
 
-use icfpc2025::problem_definition::ProblemDefinitions;
+use icfpc2025::problem_definition::{ProblemDefinition, ProblemDefinitions};
 use icfpc2025::request::*;
 use icfpc2025::types::*;
 
@@ -14,8 +14,7 @@ use utils::{LabelObservation, UnionFind};
 const QUERY_NUM: usize = 10;
 
 struct RandomWalker<R> {
-    problem: String,
-    room_count: usize,
+    definition: ProblemDefinition,
     requester: R,
 }
 
@@ -23,14 +22,12 @@ impl<R: Requester> RandomWalker<R> {
     fn new(problem: String, requester: R) -> Result<Self, Box<dyn std::error::Error>> {
         let definitions = ProblemDefinitions::new();
         let definition = definitions.get(&problem).ok_or("Invalid problem name")?;
-        let room_count = definition.size;
 
-        let select_resp = requester.select(problem.clone(), None)?;
+        let select_resp = requester.select(definition.name.clone(), None)?;
         println!("Selected problem: {:?}", select_resp);
 
         Ok(RandomWalker {
-            problem,
-            room_count,
+            definition: definition.clone(),
             requester,
         })
     }
@@ -46,15 +43,15 @@ impl<R: Requester> RandomWalker<R> {
     fn random_walk(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let mut rng = rand::rng();
 
-        println!("Starting random walk for problem: {}", self.problem);
-        println!("Room count: {}", self.room_count);
+        println!("Starting random walk for problem: {}", self.definition.name);
+        println!("Room count: {}", self.definition.size);
 
         // 長さ18*room_countのランダムな探索列を生成
         let mut exploration_plans = Vec::new();
         for _ in 0..QUERY_NUM {
             let mut exploration_plan = Vec::new();
             for i in 0..6 {
-                for _ in 0..3 * self.room_count {
+                for _ in 0..self.definition.max_plan_length / 6 {
                     exploration_plan.push(i.to_string());
                 }
             }
@@ -75,7 +72,7 @@ impl<R: Requester> RandomWalker<R> {
 
                 // 推測を実行
                 let correct = self.guess(
-                    self.room_count,
+                    self.definition.size,
                     &exploration_plans,
                     &results,
                     &label_observation,
