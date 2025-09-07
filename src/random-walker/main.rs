@@ -11,7 +11,7 @@ use icfpc2025::types::*;
 
 use utils::{LabelObservation, UnionFind};
 
-const QUERY_NUM: usize = 3;
+const QUERY_NUM: usize = 1;
 
 struct RandomWalker<R> {
     definition: ProblemDefinition,
@@ -205,7 +205,20 @@ impl<R: Requester> RandomWalker<R> {
         }
         println!("\n=== Analyzing Room Types by Label ===");
 
-        let mut uf = UnionFind::new(QUERY_NUM * results[0].len());
+        let whole_size = QUERY_NUM * results[0].len();
+        let mut uf = UnionFind::new(whole_size);
+        let mut is_different_group = vec![vec![false; whole_size]; whole_size];
+
+        for i in 0..whole_size {
+            let label_i = results[i / results[0].len()][i % results[0].len()];
+            for j in i + 1..whole_size {
+                let label_j = results[j / results[0].len()][j % results[0].len()];
+                if label_i != label_j {
+                    is_different_group[i][j] = true;
+                    is_different_group[j][i] = true;
+                }
+            }
+        }
 
         for (k, plan) in plans.iter().enumerate() {
             for i in 0..plan.len() {
@@ -224,119 +237,85 @@ impl<R: Requester> RandomWalker<R> {
         }
 
         loop {
-            let mut updated = false;
-            let unique_paths = label_observation.get_unique_paths();
-            let length = results[0].len();
-            for (actions, label) in unique_paths {
-                for (k1, result1) in results.iter().enumerate() {
-                    for (i1, r1) in result1.iter().enumerate() {
-                        if actions[0].label != *r1 as usize {
-                            continue;
-                        }
-                        let path1 = uf.get_path(k1 * length + i1, &actions);
-                        let mut ok = true;
-                        for j in 0..path1.len() - 1 {
-                            if path1[j] == !0 {
-                                ok = false;
-                                break;
-                            }
-                            if results[path1[j] / length][path1[j] % length] as usize
-                                != actions[j + 1].label
-                            {
-                                ok = false;
-                                break;
-                            }
-                        }
-                        let last_path1 = path1.last().unwrap();
-                        if *last_path1 == !0
-                            || results[*last_path1 / length][*last_path1 % length] as usize != label
-                        {
-                            ok = false;
-                        }
-                        if !ok {
-                            continue;
-                        }
-                        for (k2, result2) in results.iter().enumerate().skip(k1) {
-                            let start_idx = if k1 == k2 { i1 + 1 } else { 0 };
-                            for (i2, r2) in result2.iter().enumerate().skip(start_idx) {
-                                if actions[0].label != *r2 as usize {
-                                    continue;
-                                }
-                                if uf.find(k1 * length + i1) == uf.find(k2 * length + i2) {
-                                    continue;
-                                }
-                                let path2 = uf.get_path(k2 * length + i2, &actions);
-                                let mut ok = true;
-                                for j in 0..path2.len() - 1 {
-                                    if path2[j] == !0 {
-                                        ok = false;
-                                        break;
-                                    }
-                                    if results[path2[j] / length][path2[j] % length] as usize
-                                        != actions[j + 1].label
-                                    {
-                                        ok = false;
-                                        break;
-                                    }
-                                }
-                                let last_path2 = path2.last().unwrap();
-                                if *last_path2 == !0
-                                    || results[*last_path2 / length][*last_path2 % length] as usize
-                                        != label
-                                {
-                                    ok = false;
-                                }
-                                if !ok {
-                                    continue;
-                                }
-                                println!("Union: {} {}", k1 * length + i1, k2 * length + i2);
-                                to_be_connected -= uf.union(k1 * length + i1, k2 * length + i2);
-                                updated = true;
-                            }
-                        }
-                    }
-                }
-            }
-            if !updated || to_be_connected == 0 {
+            let mut end = false;
+            let merged_count = merge_group_by_unique_paths(results, &mut uf, label_observation);
+            to_be_connected -= merged_count;
+            if to_be_connected == 0 {
                 break;
             }
+            if merged_count == 0 {
+                end = true;
+            }
             println!("================");
+            update_label_observation(results, &mut uf, label_observation);
+            check_different_group(results, &mut uf, &mut is_different_group);
 
-            // label_observation を更新
-            for i in 0..results.len() * length {
-                // 既に結合されているものはスキップ
-                if uf.find(i) != i {
+            // 残っているグループをサイズが大きい順に並べる
+            let mut roots = Vec::new();
+            for i in 0..uf.whole_size() {
+                if uf.find(i) == i {
+                    roots.push(i);
+                }
+            }
+
+            // サイズが大きい順にソート
+            roots.sort_by_key(|&i| uf.get_size(i));
+            roots.reverse();
+
+            let mut leaders = vec![Vec::<usize>::new(); 4];
+            let mut remains = vec![Vec::<usize>::new(); 4];
+
+            for r in roots {
+                let label = results[r / results[0].len()][r % results[0].len()] as usize;
+                if leaders[label].len() < num_rooms[label] {
+                    let mut ok = true;
+                    for i in leaders[label].iter() {
+                        if !is_different_group[r][*i] {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if ok {
+                        leaders[label].push(r);
+                    } else {
+                        remains[label].push(r);
+                    }
+                } else {
+                    remains[label].push(r);
+                }
+            }
+
+            let mut updated = false;
+
+            for i in 0..4 {
+                if leaders[i].len() < num_rooms[i] {
                     continue;
                 }
-                let label0 = results[i / length][i % length] as usize;
-                for d0 in 0..6 {
-                    let pos1 = uf.get_next(i, d0);
-                    if pos1 == !0 {
-                        continue;
-                    }
-                    let label1 = results[pos1 / length][pos1 % length] as usize;
-                    label_observation.add_child(label0, d0, label1);
-                    for d1 in 0..6 {
-                        let pos2 = uf.get_next(pos1, d1);
-                        if pos2 == !0 {
-                            continue;
-                        }
-                        let label2 = results[pos2 / length][pos2 % length] as usize;
-                        label_observation.add_child_2step(label0, d0, label1, d1, label2);
-                        for d2 in 0..6 {
-                            let pos3 = uf.get_next(pos2, d2);
-                            if pos3 == !0 {
-                                continue;
+                for j in remains[i].iter() {
+                    let mut target = !0;
+                    for l in leaders[i].iter() {
+                        if !is_different_group[*j][*l] {
+                            if target == !0 {
+                                target = *l;
+                            } else {
+                                target = !0;
+                                break;
                             }
-                            let label3 = results[pos3 / length][pos3 % length] as usize;
-                            label_observation.add_child_3step(
-                                &[label0, label1, label2],
-                                &[d0, d1, d2],
-                                label3,
-                            );
                         }
+                    }
+                    if target != !0 {
+                        println!("Group Union: {} {}", *j, target);
+                        to_be_connected -= uf.union(*j, target);
+                        end = false;
+                        updated = true;
                     }
                 }
+            }
+            if end || to_be_connected == 0 {
+                break;
+            }
+            if updated {
+                update_label_observation(results, &mut uf, label_observation);
             }
         }
 
@@ -380,26 +359,14 @@ impl<R: Requester> RandomWalker<R> {
         let mut destination_labels = vec![vec![!0; 6]; node_count];
 
         {
-            for k in 0..plans.len() {
-                for i in 0..plans[k].len() - 1 {
-                    let door_i = plans[k][i..i + 1].parse::<usize>().unwrap();
-                    let base_i = k * results[0].len();
-                    let root_i = uf.find(base_i + i);
-                    if root_to_index.contains_key(&root_i) {
-                        destination_labels[root_to_index[&root_i]][door_i] =
-                            results[k][i + 1] as usize;
-                    }
-                }
-            }
-
-            for (k, plan) in plans.iter().enumerate() {
-                for i in 0..plan.len() {
-                    let door_i = plan[i..i + 1].parse::<usize>().unwrap();
-                    let base_i = k * results[0].len();
-                    let root_i = uf.find(base_i + i);
-                    let root_ni = uf.find(base_i + i + 1);
-                    if root_to_index.contains_key(&root_i) && root_to_index.contains_key(&root_ni) {
-                        graph[root_to_index[&root_i]][door_i] = root_to_index[&root_ni];
+            for i in 0..node_count {
+                let edges = uf.get_edges(roots[i]);
+                for j in 0..6 {
+                    if root_to_index.contains_key(&edges[j]) {
+                        let dst = root_to_index[&edges[j]];
+                        graph[i][j] = dst;
+                        destination_labels[i][j] =
+                            results[dst / results[0].len()][dst % results[0].len()] as usize;
                     }
                 }
             }
@@ -460,82 +427,6 @@ impl<R: Requester> RandomWalker<R> {
                     }
                 }
             }
-
-            // let mut updated = false;
-
-            // // 確定した頂点の確定した行先について、状態が不明なものがあれば設定する
-            // for (k, plan) in plans.iter().enumerate() {
-            //     for i in 0..plan.len() {
-            //         let door_i = plan[i..i + 1].parse::<usize>().unwrap();
-            //         let base_i = k * results[0].len();
-            //         let root_i = uf.find(base_i + i);
-            //         if root_to_index.contains_key(&root_i) {
-            //             let index_i = root_to_index[&root_i];
-            //             if graph[index_i][door_i] != !0 {
-            //                 let index_j = graph[index_i][door_i];
-            //                 let root_j = uf.find(base_i + i + 1);
-            //                 if !root_to_index.contains_key(&root_j) {
-            //                     uf.size[roots[index_j]] += uf.size[root_j];
-            //                     uf.parent[root_j] = roots[index_j];
-            //                     updated = true;
-            //                 }
-            //             }
-            //         }
-            //     }
-            // }
-            // // 頂点のラベルと選んだドアの組み合わせに対して、確定済みの行先と元の頂点の組の候補を列挙する
-            // let mut destination_candidates = HashMap::new();
-            // for (k, plan) in plans.iter().enumerate() {
-            //     for i in 0..plan.len() {
-            //         let door_i = plan[i..i + 1].parse::<usize>().unwrap();
-            //         let base_i = k * results[0].len();
-            //         let root_i = uf.find(base_i + i);
-            //         if root_to_index.contains_key(&root_i) {
-            //             let index_i = root_to_index[&root_i];
-            //             let root_ni = uf.find(base_i + i + 1);
-            //             if root_to_index.contains_key(&root_ni) {
-            //                 let index_ni = root_to_index[&root_ni];
-            //                 destination_candidates
-            //                     .entry((results[k][i], door_i))
-            //                     .or_insert_with(HashSet::new)
-            //                     .insert((index_ni, index_i));
-            //             }
-            //         }
-            //     }
-            // }
-            // // 現在の状態で、ラベルとドアの組み合わせに対してあり得る行先を列挙し、
-            // // 部屋数と同じ個数の候補があるところについて、その情報を用いて場所を確定させる
-            // for k in 0..plans.len() {
-            //     for i in 0..plans[k].len() {
-            //         let door_i = plans[k][i..i + 1].parse::<usize>().unwrap();
-            //         let base_i = k * results[0].len();
-            //         let root_i = uf.find(base_i + i);
-            //         if root_to_index.contains_key(&root_i) {
-            //             continue;
-            //         }
-            //         let root_ni = uf.find(base_i + i + 1);
-            //         if !root_to_index.contains_key(&root_ni) {
-            //             continue;
-            //         }
-            //         let label_i = results[k][i];
-            //         if destination_candidates.contains_key(&(label_i, door_i)) {
-            //             let candidates = &destination_candidates[&(label_i, door_i)];
-            //             if candidates.len() == num_rooms[label_i as usize] {
-            //                 for candidate in candidates {
-            //                     if candidate.1 != root_i && candidate.0 == root_to_index[&root_ni] {
-            //                         uf.size[candidate.1] += uf.size[root_i];
-            //                         uf.parent[root_i] = candidate.1;
-            //                         updated = true;
-            //                         break;
-            //                     }
-            //                 }
-            //             }
-            //         }
-            //     }
-            // }
-            // if !updated {
-            //     break;
-            // }
         }
 
         // println!("Union-Find: {:?}", uf);
@@ -543,17 +434,6 @@ impl<R: Requester> RandomWalker<R> {
         println!("node_label: {:?}", node_label);
         println!("destination_labels: {:?}", destination_labels);
         println!("graph: {:?}", graph);
-
-        let mut graph2 = graph.clone();
-        for i in 0..node_count {
-            let edges = uf.get_edges(roots[i]);
-            for j in 0..6 {
-                if root_to_index.contains_key(&edges[j]) {
-                    graph2[i][j] = root_to_index[&edges[j]];
-                }
-            }
-        }
-        println!("graph2: {:?}", graph2);
 
         println!("To be connected: {}", to_be_connected);
         println!("{} {}", node_count, results[0].len());
@@ -609,6 +489,206 @@ impl<R: Requester> RandomWalker<R> {
         println!("Guess response: {:?}", guess_resp);
 
         Ok(true)
+    }
+}
+
+// 3手分の行動で判別可能な部屋についてマージする
+fn merge_group_by_unique_paths(
+    results: &[Vec<i8>],
+    uf: &mut UnionFind,
+    label_observation: &LabelObservation,
+) -> usize {
+    let mut merged_count = 0;
+    let unique_paths = label_observation.get_unique_paths();
+    let length = results[0].len();
+    for (actions, label) in unique_paths {
+        for (k1, result1) in results.iter().enumerate() {
+            for (i1, r1) in result1.iter().enumerate() {
+                if actions[0].label != *r1 as usize {
+                    continue;
+                }
+                let path1 = uf.get_path(k1 * length + i1, &actions);
+                let mut ok = true;
+                for j in 0..path1.len() - 1 {
+                    if path1[j] == !0 {
+                        ok = false;
+                        break;
+                    }
+                    if results[path1[j] / length][path1[j] % length] as usize
+                        != actions[j + 1].label
+                    {
+                        ok = false;
+                        break;
+                    }
+                }
+                let last_path1 = path1.last().unwrap();
+                if *last_path1 == !0
+                    || results[*last_path1 / length][*last_path1 % length] as usize != label
+                {
+                    ok = false;
+                }
+                if !ok {
+                    continue;
+                }
+                for (k2, result2) in results.iter().enumerate().skip(k1) {
+                    let start_idx = if k1 == k2 { i1 + 1 } else { 0 };
+                    for (i2, r2) in result2.iter().enumerate().skip(start_idx) {
+                        if actions[0].label != *r2 as usize {
+                            continue;
+                        }
+                        if uf.find(k1 * length + i1) == uf.find(k2 * length + i2) {
+                            continue;
+                        }
+                        let path2 = uf.get_path(k2 * length + i2, &actions);
+                        let mut ok = true;
+                        for j in 0..path2.len() - 1 {
+                            if path2[j] == !0 {
+                                ok = false;
+                                break;
+                            }
+                            if results[path2[j] / length][path2[j] % length] as usize
+                                != actions[j + 1].label
+                            {
+                                ok = false;
+                                break;
+                            }
+                        }
+                        let last_path2 = path2.last().unwrap();
+                        if *last_path2 == !0
+                            || results[*last_path2 / length][*last_path2 % length] as usize != label
+                        {
+                            ok = false;
+                        }
+                        if !ok {
+                            continue;
+                        }
+                        println!("Union: {} {}", k1 * length + i1, k2 * length + i2);
+                        merged_count += uf.union(k1 * length + i1, k2 * length + i2);
+                    }
+                }
+            }
+        }
+    }
+    merged_count
+}
+
+// 判明している接続情報を元に label_observation を更新
+fn update_label_observation(
+    results: &[Vec<i8>],
+    uf: &mut UnionFind,
+    label_observation: &mut LabelObservation,
+) {
+    let length = results[0].len();
+    // label_observation を更新
+    for i in 0..results.len() * length {
+        // 既に結合されているものはスキップ
+        if uf.find(i) != i {
+            continue;
+        }
+        let label0 = results[i / length][i % length] as usize;
+        for d0 in 0..6 {
+            let pos1 = uf.get_next(i, d0);
+            if pos1 == !0 {
+                continue;
+            }
+            let label1 = results[pos1 / length][pos1 % length] as usize;
+            label_observation.add_child(label0, d0, label1);
+            for d1 in 0..6 {
+                let pos2 = uf.get_next(pos1, d1);
+                if pos2 == !0 {
+                    continue;
+                }
+                let label2 = results[pos2 / length][pos2 % length] as usize;
+                label_observation.add_child_2step(label0, d0, label1, d1, label2);
+                for d2 in 0..6 {
+                    let pos3 = uf.get_next(pos2, d2);
+                    if pos3 == !0 {
+                        continue;
+                    }
+                    let label3 = results[pos3 / length][pos3 % length] as usize;
+                    label_observation.add_child_3step(
+                        &[label0, label1, label2],
+                        &[d0, d1, d2],
+                        label3,
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn check_different_group(
+    results: &[Vec<i8>],
+    uf: &mut UnionFind,
+    is_different_group: &mut [Vec<bool>],
+) {
+    fn check_different_group_impl(
+        results: &[Vec<i8>],
+        uf: &mut UnionFind,
+        is_different_group: &[Vec<bool>],
+        idx0: usize,
+        idx1: usize,
+        depth: usize,
+    ) -> bool {
+        if depth == 0 {
+            return false;
+        }
+        let length = results[0].len();
+        for d0 in 0..6 {
+            let pos1_1 = uf.get_next(idx0, d0);
+            if pos1_1 == !0 {
+                continue;
+            }
+            let pos2_1 = uf.get_next(idx1, d0);
+            if pos2_1 == !0 {
+                continue;
+            }
+            if is_different_group[pos1_1][pos2_1] {
+                return true;
+            }
+            let label1_1 = results[pos1_1 / length][pos1_1 % length] as usize;
+            let label2_1 = results[pos2_1 / length][pos2_1 % length] as usize;
+            if label1_1 != label2_1 {
+                return true;
+            }
+            if check_different_group_impl(
+                results,
+                uf,
+                is_different_group,
+                pos1_1,
+                pos2_1,
+                depth - 1,
+            ) {
+                return true;
+            }
+        }
+        false
+    }
+
+    loop {
+        let mut updated = false;
+        let whole_size = uf.whole_size();
+        for i in 0..whole_size {
+            if uf.find(i) != i {
+                continue;
+            }
+            for j in i + 1..whole_size {
+                if is_different_group[i][j] {
+                    continue;
+                }
+                if uf.find(j) != j {
+                    continue;
+                }
+                if check_different_group_impl(results, uf, is_different_group, i, j, 3) {
+                    is_different_group[i][j] = true;
+                    is_different_group[j][i] = true;
+                    updated = true;
+                }
+            }
+        }
+        if !updated {
+            break;
+        }
     }
 }
 
