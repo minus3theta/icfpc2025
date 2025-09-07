@@ -508,7 +508,10 @@ impl<R: Requester> RandomWalker<R> {
         let rewind_path = shortest_paths[start_index][rewind_target].to_string()
             + &shortest_paths[rewind_target][start_index].to_string();
 
-        let planned_paths = vec![repeat_n(current_path, self.definition.ploidy - 1).join("")];
+        let planned_paths = vec![
+            repeat_n(current_path, self.definition.ploidy - 1)
+                .join(&shortest_paths[current_room][start_index]),
+        ];
         /* こちらは planned_paths を複数に分割する実装。ほぼうまくいくが、コストが追加で掛かる
         let planned_paths = (0..self.definition.ploidy - 1).map(|i| {
             repeat_n(rewind_path.clone(), i).join("") + &current_path
