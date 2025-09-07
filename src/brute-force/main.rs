@@ -150,7 +150,9 @@ impl<R: Requester> BruteForce<R> {
                             let room_path =
                                 room_paths[unprocessed_room].0.clone() + &door_id.to_string();
                             // 最後の 1 コピーは補完できるので調査する必要がない
-                            if new_room_id % self.definition.ploidy < self.definition.ploidy - 1 {
+                            if self.definition.ploidy == 1
+                                || new_room_id % self.definition.ploidy < self.definition.ploidy - 1
+                            {
                                 room_paths.push((room_path.clone(), new_room_id));
                             }
                             println!(
