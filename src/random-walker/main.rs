@@ -3,6 +3,7 @@ use std::env;
 
 mod utils;
 
+use rand::Rng;
 use rand::seq::SliceRandom;
 
 use icfpc2025::problem_definition::{ProblemDefinition, ProblemDefinitions};
@@ -11,7 +12,8 @@ use icfpc2025::types::*;
 
 use utils::{LabelObservation, UnionFind};
 
-const QUERY_NUM: usize = 10;
+const QUERY_NUM: usize = 60;
+const REWRITE_ROOM_COUNT: usize = 4;
 
 struct RandomWalker<R> {
     definition: ProblemDefinition,
@@ -46,6 +48,20 @@ impl<R: Requester> RandomWalker<R> {
         println!("Starting random walk for problem: {}", self.definition.name);
         println!("Room count: {}", self.definition.size);
 
+        // 新問題では prefix を追加して最初の n 部屋を区別する
+        let prefix = if self.definition.label_rewritable {
+            let mut prefix = format!("[{}]", rng.random_range(0..4)).to_string();
+            for _ in 1..REWRITE_ROOM_COUNT {
+                prefix.push_str(&format!(
+                    "{}[{}]",
+                    rng.random_range(0..6),
+                    rng.random_range(0..4)
+                ));
+            }
+            prefix
+        } else {
+            "".to_string()
+        };
         // 長さ18*room_countのランダムな探索列を生成
         let mut exploration_plans = Vec::new();
         for _ in 0..QUERY_NUM {
@@ -56,7 +72,8 @@ impl<R: Requester> RandomWalker<R> {
                 }
             }
             exploration_plan.shuffle(&mut rng);
-            exploration_plans.push(exploration_plan.join(""));
+            exploration_plans
+                .push(prefix.clone() + &exploration_plan[REWRITE_ROOM_COUNT - 1..].join(""));
         }
 
         println!("Generated exploration plans: {:?}", exploration_plans);
@@ -67,6 +84,56 @@ impl<R: Requester> RandomWalker<R> {
                 println!("Exploration completed successfully");
                 println!("Number of results: {}", results.len());
 
+                // もとのラベルとそこまでの経路を保存する
+                let rewrite_labels = if self.definition.label_rewritable {
+                    let mut rewrite_labels = vec![];
+                    for i in 0..REWRITE_ROOM_COUNT {
+                        let mut path = "".to_string();
+                        for j in 0..i {
+                            path.push_str(&prefix[j * 4 + 3..j * 4 + 4]);
+                        }
+                        rewrite_labels.push((path, results[0][i * 2]));
+                        if results[0][i * 2 + 1] == results[0][i * 2] {
+                            return Err("Bad luck!".into());
+                        }
+                    }
+                    rewrite_labels
+                } else {
+                    vec![]
+                };
+
+                // 新問題で追加された prefix を削る
+                let results = if self.definition.label_rewritable {
+                    results
+                        .iter()
+                        .map(|result| {
+                            result[1..REWRITE_ROOM_COUNT * 2]
+                                .into_iter()
+                                .step_by(2)
+                                .chain(result[REWRITE_ROOM_COUNT * 2..].into_iter())
+                                .copied()
+                                .collect()
+                        })
+                        .collect()
+                } else {
+                    results
+                };
+                let exploration_plans = if self.definition.label_rewritable {
+                    exploration_plans
+                        .iter()
+                        .map(|plan| {
+                            prefix[3..]
+                                .chars()
+                                .into_iter()
+                                .step_by(4)
+                                .collect::<String>()
+                                + &plan[prefix.len()..]
+                        })
+                        .collect()
+                } else {
+                    exploration_plans
+                };
+
                 // 結果を分析
                 let label_observation = self.analyze_results(&exploration_plans, &results)?;
 
@@ -76,6 +143,7 @@ impl<R: Requester> RandomWalker<R> {
                     &exploration_plans,
                     &results,
                     &label_observation,
+                    &rewrite_labels,
                 )?;
                 if correct {
                     println!("✅ Guess successful!");
@@ -212,6 +280,7 @@ impl<R: Requester> RandomWalker<R> {
         plans: &[String],
         results: &[Vec<i8>],
         label_observation: &LabelObservation,
+        rewrite_labels: &[(String, i8)],
     ) -> Result<bool, Box<dyn std::error::Error>> {
         let mut num_rooms = [0; 4];
 
@@ -602,6 +671,15 @@ impl<R: Requester> RandomWalker<R> {
             if !updated {
                 break;
             }
+        }
+        // 書き換えられたラベルをもとに戻す
+        for (path, label) in rewrite_labels {
+            println!("Writing-back original label at {:?}: {:?}", path, label);
+            let mut node_index = start_index;
+            for c in path.chars() {
+                node_index = graph[node_index][(c as u8 - b'0') as usize];
+            }
+            node_label[node_index] = *label;
         }
 
         println!("Union-Find: {:?}", uf);
