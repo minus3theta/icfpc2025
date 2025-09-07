@@ -5,6 +5,7 @@ mod utils;
 
 use itertools::Itertools;
 use itertools::repeat_n;
+use rand::Rng;
 use rand::seq::SliceRandom;
 
 use icfpc2025::problem_definition::{ProblemDefinition, ProblemDefinitions};
@@ -395,10 +396,6 @@ impl<R: Requester> RandomWalker<R> {
             return Ok((node_label, start_index, graph));
         }
 
-        if self.definition.ploidy > 2 {
-            return Err("Not implemented yet!".into());
-        }
-
         let sub_size = self.definition.size / self.definition.ploidy;
 
         // 各部屋から各部屋への最短経路
@@ -427,7 +424,7 @@ impl<R: Requester> RandomWalker<R> {
         println!("Shortest paths: {:?}", shortest_paths);
 
         // 全部屋を巡回する経路を生成する
-        // 実質的に TSP なので改善の余地がある
+        // TODO: 実質的に TSP なので改善の余地がある
         let mut visited_rooms = HashSet::new();
         let mut current_room = start_index;
         let mut paths = vec![];
@@ -462,14 +459,20 @@ impl<R: Requester> RandomWalker<R> {
         assert_eq!(paths.len(), sub_size);
 
         // 巡回しながらラベルを変更するパスを生成する
-        let painting_path = room_order
-            .iter()
-            .zip_eq(paths.iter())
-            .map(|(room, path)| format!("[{}]{}", (node_label[*room] + 1) % 4, path))
+        let painting_path = repeat_n(room_order, self.definition.ploidy - 1)
+            .enumerate()
+            .map(|(i, v)| {
+                v.iter()
+                    .zip_eq(paths.iter())
+                    .map(|(room, path)| {
+                        format!("[{}]{}", (node_label[*room] + 1 + i as i8) % 4, path)
+                    })
+                    .join("")
+            })
             .join("");
         // 書き換えはコストを消費しない
-        let painting_length = painting_path.len() - sub_size * 2;
-        println!("Painting path: {}", painting_path);
+        let painting_length = painting_path.len() - sub_size * 2 * (self.definition.ploidy - 1);
+        println!("Painting path: {} ({})", painting_path, painting_length);
 
         let mut unvisited_doors = BTreeSet::new();
         for room in 0..sub_size {
@@ -479,55 +482,84 @@ impl<R: Requester> RandomWalker<R> {
         }
 
         // 未訪問のドアを訪問する経路を生成する
-        // これも実質的に TSP なので改善の余地がある
-        let mut planned_paths = vec![];
+        // TODO: これも実質的に TSP なので改善の余地がある
+        let mut current_room = start_index;
+        let mut current_path = "".to_string();
         while !unvisited_doors.is_empty() {
-            let mut current_room = start_index;
-            let mut current_path = "".to_string();
-            let mut remaining_length = self.definition.max_plan_length - painting_length;
-            while !unvisited_doors.is_empty() {
-                let (target_room, target_door) = *unvisited_doors.first().unwrap();
-                let next_path = &shortest_paths[current_room][target_room];
-                if next_path.len() > remaining_length {
-                    break;
-                }
-                remaining_length -= next_path.len();
-                current_path += next_path;
-                for door in next_path.chars() {
-                    let door = (door as u8 - b'0') as usize;
-                    unvisited_doors.remove(&(current_room, door));
-                    current_room = graph[current_room][door];
-                }
-                if remaining_length == 0 {
-                    break;
-                }
-                remaining_length -= 1;
-                current_path += &target_door.to_string();
-                unvisited_doors.remove(&(current_room, target_door));
-                current_room = graph[current_room][target_door];
+            let (target_room, target_door) = *unvisited_doors.first().unwrap();
+            let next_path = &shortest_paths[current_room][target_room];
+            current_path += next_path;
+            for door in next_path.chars() {
+                let door = (door as u8 - b'0') as usize;
+                unvisited_doors.remove(&(current_room, door));
+                current_room = graph[current_room][door];
             }
-            planned_paths.push(painting_path.clone() + &current_path);
+            current_path += &target_door.to_string();
+            unvisited_doors.remove(&(current_room, target_door));
+            current_room = graph[current_room][target_door];
         }
 
-        let planned_paths = planned_paths;
+        // 最初の部屋からコピーの最初の部屋に戻る
+        // (self.definition.ploidy - 1) / self.definition.ploidy の確率で成功する
+        let mut rewind_target = rand::rng().random_range(0..sub_size - 1);
+        if rewind_target >= start_index {
+            rewind_target += 1;
+        }
+        let rewind_path = shortest_paths[start_index][rewind_target].to_string()
+            + &shortest_paths[rewind_target][start_index].to_string();
+
+        let planned_paths = vec![repeat_n(current_path, self.definition.ploidy - 1).join("")];
+        /* こちらは planned_paths を複数に分割する実装。ほぼうまくいくが、コストが追加で掛かる
+        let planned_paths = (0..self.definition.ploidy - 1).map(|i| {
+            repeat_n(rewind_path.clone(), i).join("") + &current_path
+        }).collect::<Vec<_>>();*/
+
+        // よく plan が長すぎて失敗してしまう。経路をちゃんと計画するとうまくいく可能性が増す
+        if painting_length - sub_size * (self.definition.ploidy - 1)
+            + planned_paths.last().unwrap().len()
+            > self.definition.max_plan_length
+        {
+            return Err(format!(
+                "Planned path is too long! ({} / {})",
+                painting_length - sub_size * (self.definition.ploidy - 1)
+                    + planned_paths.last().unwrap().len(),
+                self.definition.max_plan_length
+            )
+            .into());
+        }
+
+        let planned_paths = planned_paths
+            .into_iter()
+            .map(|v| painting_path.clone() + &v)
+            .collect::<Vec<_>>();
+
         println!("Planned paths: {:?}", planned_paths);
 
         let results = self.explore(&planned_paths)?;
 
-        // ドア間の移動でのコピー間の移動を記録する
-        let mut shifts = vec![vec![None; 6]; sub_size];
-        for (plan, result) in planned_paths.iter().zip_eq(results.iter()) {
-            let mut current_room = start_index;
-            let mut current_shift = (4 + node_label[current_room] - result[painting_length]) % 4;
+        // 同じラベルに戻ってきてしまうと同じコピーしか塗れていないので失敗
+        if self.definition.ploidy > 2
+            && results[0][1] == results[0][painting_length / self.definition.ploidy]
+        {
+            return Err("Bad luck!".into());
+        }
 
-            let plan = plan[painting_path.len()..].to_string();
-            let result = result[painting_length + 1..].to_vec();
+        // ドア間の移動でのコピー間の移動を記録する
+        let mut shifts = vec![vec![vec![None; self.definition.ploidy]; 6]; sub_size];
+        for (i, (plan, result)) in planned_paths.iter().zip_eq(results.iter()).enumerate() {
+            let mut current_room = start_index;
+            let mut current_shift = (4 + result[painting_length + rewind_path.len() * i]
+                - node_label[current_room])
+                % 4;
+
+            let plan = plan[painting_path.len() + rewind_path.len() * i..].to_string();
+            let result = result[painting_length + rewind_path.len() * i + 1..].to_vec();
 
             for (door, next_label) in plan.chars().zip_eq(result.iter()) {
                 let door = (door as u8 - b'0') as usize;
                 let next_room = graph[current_room][door];
-                let next_shift = (4 + node_label[next_room] - next_label) % 4;
-                shifts[current_room][door].get_or_insert((4 + current_shift - next_shift) % 4);
+                let next_shift = (4 + next_label - node_label[next_room]) % 4;
+                shifts[current_room][door][current_shift as usize].get_or_insert(next_shift);
                 current_room = next_room;
                 current_shift = next_shift;
             }
@@ -535,8 +567,25 @@ impl<R: Requester> RandomWalker<R> {
 
         let shifts = shifts
             .into_iter()
-            .map(|v| v.into_iter().map(|v| v.unwrap()).collect::<Vec<_>>())
-            .collect::<Vec<_>>();
+            .map(|v| {
+                v.into_iter()
+                    .map(|v| {
+                        let mut remaining: i32 = (1 << self.definition.ploidy) - 1;
+                        for s in v.iter() {
+                            if let Some(s) = s {
+                                remaining &= !(1 << *s as usize);
+                            }
+                        }
+                        if remaining.count_ones() > 1 {
+                            return Err(format!("Too many unknown shifts: {:?}", v).into());
+                        }
+                        Ok(v.into_iter()
+                            .map(|v| v.unwrap_or(remaining.trailing_zeros() as i8))
+                            .collect::<Vec<_>>())
+                    })
+                    .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()
+            })
+            .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
         println!("Shifts: {:?}", shifts);
 
         // シフトしたグラフを生成する
@@ -548,12 +597,14 @@ impl<R: Requester> RandomWalker<R> {
                     .map(|(v, s)| {
                         v.into_iter()
                             .zip_eq(s)
-                            .map(|(v, s)| v + (i + *s as usize) % self.definition.ploidy * sub_size)
+                            .map(|(v, s)| v + (s[i] as usize) % self.definition.ploidy * sub_size)
                             .collect::<Vec<_>>()
                     })
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
+        // 最初に start_index のノードを書き換えている
+        let start_index = start_index + sub_size;
         let node_label = repeat_n(node_label, self.definition.ploidy)
             .flatten()
             .collect::<Vec<_>>();
