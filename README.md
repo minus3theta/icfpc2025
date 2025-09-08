@@ -2,7 +2,7 @@
 
 ## Lightning round
 
-[lightning tag](https://github.com/minus3theta/icfpc2025/releases/tag/lightning)
+[lightning tag](https://github.com/minus3theta/icfpc2025/tree/lightning)
 includes the code written in first 24 hours.
 
 ## mock-server
