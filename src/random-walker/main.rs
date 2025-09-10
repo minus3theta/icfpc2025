@@ -14,7 +14,8 @@ use icfpc2025::types::*;
 
 use utils::{LabelObservation, UnionFind};
 
-const QUERY_NUM: usize = 2;
+const QUERY_NUM: usize = 1;
+const SAT_SOLVER: bool = true;
 
 type Graph = (Vec<i8>, usize, Vec<Vec<usize>>);
 
@@ -75,16 +76,25 @@ impl<R: Requester> RandomWalker<R> {
                 println!("Exploration completed successfully");
                 println!("Number of results: {}", results.len());
 
-                // 結果を分析
-                let mut label_observation = self.analyze_results(&exploration_plans, &results)?;
+                let (node_label, start_index, graph) = if SAT_SOLVER {
+                    self.sat_solver(
+                        self.definition.size / self.definition.ploidy,
+                        &exploration_plans,
+                        &results,
+                    )?
+                } else {
+                    // 結果を分析
+                    let mut label_observation =
+                        self.analyze_results(&exploration_plans, &results)?;
 
-                // 推測を実行
-                let (node_label, start_index, graph) = self.guess(
-                    self.definition.size / self.definition.ploidy,
-                    &exploration_plans,
-                    &results,
-                    &mut label_observation,
-                )?;
+                    // 推測を実行
+                    self.guess(
+                        self.definition.size / self.definition.ploidy,
+                        &exploration_plans,
+                        &results,
+                        &mut label_observation,
+                    )?
+                };
                 let (node_label, start_index, graph) =
                     self.expand_ploidy(node_label, start_index, graph)?;
                 let correct = self.submit_result(node_label, start_index, graph)?;
@@ -102,6 +112,153 @@ impl<R: Requester> RandomWalker<R> {
         }
 
         Ok(())
+    }
+
+    fn sat_solver(
+        &self,
+        node_count: usize,
+        plans: &[String],
+        results: &[Vec<i8>],
+    ) -> Result<Graph, Box<dyn std::error::Error>> {
+        let label_counts = (0..4)
+            .rev()
+            .map(|i| (node_count + i) / 4)
+            .collect::<Vec<_>>();
+        let label_offsets = label_counts
+            .iter()
+            .scan(0, |acc, &count| {
+                let res = *acc;
+                *acc += count;
+                Some(res)
+            })
+            .collect::<Vec<_>>();
+
+        let mut cnf = vec![];
+
+        let mut index = 0;
+        for (result, plan) in results.iter().zip_eq(plans.iter()) {
+            // start index is always same
+            if index != 0 {
+                let label_count = label_counts[result[0] as usize];
+                for (from, to) in (0..label_count).cartesian_product(0..label_count) {
+                    if from != to {
+                        cnf.push(vec![-(from as i32 + 1), -(index + to as i32 + 1)]);
+                    }
+                }
+            }
+
+            let mut sub_index = index;
+
+            for &r in result {
+                let label_count = label_counts[r as usize] as i32;
+                // at-least-one
+                cnf.push(
+                    (index..index + label_count)
+                        .map(|v| v as i32 + 1)
+                        .collect::<Vec<_>>(),
+                );
+                // at-most-one
+                for v in (index..index + label_count).combinations(2) {
+                    cnf.push(v.into_iter().map(|v| -(v as i32 + 1)).collect::<Vec<_>>());
+                }
+                index += label_count;
+            }
+
+            let mut iter = plan.chars().zip_eq(result.iter().tuple_windows());
+            for (p, (&from, &to)) in iter.clone() {
+                iter.next();
+                let label_count = label_counts[from as usize] as i32;
+                let next_label_count = label_counts[to as usize] as i32 + label_count;
+                let mut sub_index2 = sub_index + label_count;
+                for (p2, (&from2, &to2)) in iter.clone() {
+                    let label_count2 = label_counts[from2 as usize] as i32;
+                    if p2 == p && from2 == from {
+                        if to2 == to {
+                            // same door from same origin leads to same destination
+                            for i in 0..label_count {
+                                for j in label_count..next_label_count {
+                                    for k in label_count..next_label_count {
+                                        if j != k {
+                                            cnf.push(vec![
+                                                -(sub_index + i + 1) as i32,
+                                                -(sub_index2 + i + 1) as i32,
+                                                -(sub_index + j + 1) as i32,
+                                                -(sub_index2 + k + 1) as i32,
+                                            ]);
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // origins are different
+                            for i in 0..label_count {
+                                cnf.push(vec![
+                                    -(sub_index + i + 1) as i32,
+                                    -(sub_index2 + i + 1) as i32,
+                                ]);
+                            }
+                        }
+                    }
+                    sub_index2 += label_count2;
+                }
+                sub_index += label_count;
+            }
+        }
+
+        match splr::Certificate::try_from(cnf)
+            .map_err::<Box<dyn std::error::Error>, _>(|e| e.to_string().into())?
+        {
+            splr::Certificate::UNSAT => {
+                return Err("UNSAT".into());
+            }
+            splr::Certificate::SAT(answer_bit) => {
+                // one-hot をインデックスに変換する
+                let mut answer_bit = answer_bit.into_iter();
+                let mut answers = vec![vec![]; results.len()];
+                for (result, answer) in results.iter().zip_eq(answers.iter_mut()) {
+                    for &r in result {
+                        let v = answer_bit
+                            .by_ref()
+                            .take(label_counts[r as usize])
+                            .collect::<Vec<_>>();
+                        answer.push(
+                            label_offsets[r as usize]
+                                + v.into_iter()
+                                    .position(|v| v > 0)
+                                    .ok_or::<Box<dyn std::error::Error>>(
+                                        "Invalid response".into(),
+                                    )?,
+                        );
+                    }
+                }
+                let answers = answers;
+
+                let node_label = label_counts
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(i, &count)| (0..count).map(move |_| i as i8))
+                    .collect::<Vec<_>>();
+
+                let start_index = answers[0][0];
+
+                let mut graph = vec![vec![!0; 6]; node_count];
+                for (plan, answer) in plans.iter().zip_eq(answers.iter()) {
+                    for (p, (&from, &to)) in plan.chars().zip_eq(answer.iter().tuple_windows()) {
+                        let p = (p as u8 - b'0') as usize;
+                        if graph[from][p] != !0 && graph[from][p] != to {
+                            return Err("Conflict detected!".into());
+                        }
+                        graph[from][p] = to;
+                    }
+                }
+
+                println!("start_index: {}", start_index);
+                println!("node_label: {:?}", node_label);
+                println!("graph: {:?}", graph);
+
+                Ok((node_label, start_index, graph))
+            }
+        }
     }
 
     fn analyze_results(
