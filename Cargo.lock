@@ -888,6 +888,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "splr",
 ]
 
 [[package]]
@@ -1724,6 +1725,15 @@ checksum = "233504af464074f9d066d7b5416c5f9b894a5862a6506e306f7b816cdd6f1807"
 dependencies = [
  "libc",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "splr"
+version = "0.17.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6c8d72268886573a95520ff76c282876c69d3776e02a0b4ac8eea2b310d69ca"
+dependencies = [
+ "bitflags",
 ]
 
 [[package]]
