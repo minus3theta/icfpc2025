@@ -171,6 +171,7 @@ impl<R: Requester> RandomWalker<R> {
                 let next_label_count = label_counts[to as usize] as i32 + label_count;
                 let mut sub_index2 = sub_index + label_count;
                 for (p2, (&from2, &to2)) in iter.clone() {
+                    // TODO: cross result constraint
                     let label_count2 = label_counts[from2 as usize] as i32;
                     if p2 == p && from2 == from {
                         if to2 == to {
@@ -205,6 +206,69 @@ impl<R: Requester> RandomWalker<R> {
             }
         }
 
+        let mapping_offset = index as usize;
+
+        for i in 0..node_count {
+            for j in 0..6 {
+                // at-least-one
+                cnf.push(
+                    (mapping_offset + (i * 6 + j) * node_count
+                        ..mapping_offset + (i * 6 + j + 1) * node_count)
+                        .map(|v| v as i32 + 1)
+                        .collect::<Vec<_>>(),
+                );
+                // at-most-one
+                for v in (mapping_offset + (i * 6 + j) * node_count
+                    ..mapping_offset + (i * 6 + j + 1) * node_count)
+                    .combinations(2)
+                {
+                    cnf.push(v.into_iter().map(|v| -(v as i32 + 1)).collect::<Vec<_>>());
+                }
+            }
+        }
+
+        let mut index = 0;
+        for (result, plan) in results.iter().zip_eq(plans.iter()) {
+            for (p, (&from, &to)) in plan.chars().zip_eq(result.iter().tuple_windows()) {
+                let label_count = label_counts[from as usize] as i32;
+                let label_offset = label_offsets[from as usize];
+                let next_label_count = label_counts[to as usize] as i32;
+                let next_label_offset = label_offsets[to as usize];
+
+                // one door from one origin leads to one destination
+                for i in 0..label_count {
+                    for j in 0..next_label_count {
+                        cnf.push(vec![
+                            -(index + i + 1),
+                            -(index + label_count + j + 1),
+                            (mapping_offset
+                                + ((label_offset + i as usize) * 6 + (p as u8 - b'0') as usize)
+                                    * node_count
+                                + (next_label_offset + j as usize)
+                                + 1) as i32,
+                        ]);
+                    }
+                }
+
+                // backward connection
+                for i in 0..label_count {
+                    for j in 0..next_label_count {
+                        let mut v = vec![-(index + i + 1), -(index + label_count + j + 1)];
+                        v.extend((0..6).map(|k| {
+                            (mapping_offset
+                                + ((next_label_offset + j as usize) * 6 + k) * node_count
+                                + (label_offset + i as usize)
+                                + 1) as i32
+                        }));
+                        cnf.push(v);
+                    }
+                }
+
+                index += label_count;
+            }
+            index += label_counts[*result.last().unwrap() as usize] as i32;
+        }
+
         match splr::Certificate::try_from(cnf)
             .map_err::<Box<dyn std::error::Error>, _>(|e| e.to_string().into())?
         {
@@ -213,18 +277,18 @@ impl<R: Requester> RandomWalker<R> {
             }
             splr::Certificate::SAT(answer_bit) => {
                 // one-hot をインデックスに変換する
-                let mut answer_bit = answer_bit.into_iter();
+                let mut answer_bit2 = answer_bit.iter().take(mapping_offset);
                 let mut answers = vec![vec![]; results.len()];
                 for (result, answer) in results.iter().zip_eq(answers.iter_mut()) {
                     for &r in result {
-                        let v = answer_bit
+                        let v = answer_bit2
                             .by_ref()
                             .take(label_counts[r as usize])
                             .collect::<Vec<_>>();
                         answer.push(
                             label_offsets[r as usize]
                                 + v.into_iter()
-                                    .position(|v| v > 0)
+                                    .position(|v| *v > 0)
                                     .ok_or::<Box<dyn std::error::Error>>(
                                         "Invalid response".into(),
                                     )?,
@@ -242,7 +306,14 @@ impl<R: Requester> RandomWalker<R> {
                 let start_index = answers[0][0];
 
                 let mut graph = vec![vec![!0; 6]; node_count];
-                for (plan, answer) in plans.iter().zip_eq(answers.iter()) {
+                let mut iter = answer_bit.into_iter().skip(mapping_offset);
+                for node in graph.iter_mut() {
+                    for edge in node.iter_mut() {
+                        let v = iter.by_ref().take(node_count).collect::<Vec<_>>();
+                        *edge = v.into_iter().position(|v| v > 0).unwrap();
+                    }
+                }
+                /*for (plan, answer) in plans.iter().zip_eq(answers.iter()) {
                     for (p, (&from, &to)) in plan.chars().zip_eq(answer.iter().tuple_windows()) {
                         let p = (p as u8 - b'0') as usize;
                         if graph[from][p] != !0 && graph[from][p] != to {
@@ -250,7 +321,7 @@ impl<R: Requester> RandomWalker<R> {
                         }
                         graph[from][p] = to;
                     }
-                }
+                }*/
 
                 println!("start_index: {}", start_index);
                 println!("node_label: {:?}", node_label);
